@@ -1,6 +1,63 @@
 name: voice-live-agent
 metadata:
   template: voice-live-agent@0.0.1
+
+# azd will automatically use infra/main.bicep by default
+hooks:
+  # Phase 1: Deploy registry and identity before anything else
+  preprovision:
+    shell: sh
+    run: |
+      echo "=== Installing dependencies ==="
+      
+      # Check if jq is installed, install if not
+      if command -v jq >/dev/null 2>&1; then
+        echo "jq is already installed at: $(which jq)"
+      else
+        echo "jq not found, installing..."
+        sudo apt-get update && sudo apt-get install -y jq
+      fi
+      
+      echo "=== Phase 1: Deploying registry and identity ==="
+      
+      # Get environment details
+      LOCATION=$(azd env get-values --output json | jq -r '.AZURE_LOCATION // "eastus2"')
+      ENV_NAME=$(azd env get-values --output json | jq -r '.AZURE_ENV_NAME // "voice-live-agent"')
+      
+      echo "Environment: $ENV_NAME"
+      echo "Location: $LOCATION"
+      
+      # Deploy phase1-registry.bicep
+      echo "Deploying phase1-registry.bicep..."
+      az deployment sub create \
+        --name "phase1-registry-$ENV_NAME" \
+        --location "$LOCATION" \
+        --template-file infra/phase1-registry.bicep \
+        --parameters environmentName="$ENV_NAME" location="$LOCATION" \
+        --output table
+      
+      echo "✅ Phase 1 complete: Registry and identity deployed"
+
+      echo "=== Phase 2: Build container image before app deployment ==="
+
+      # Get Registry name from phase1 deployment output
+      echo "Getting registry name from phase1 deployment..."
+      REGISTRY_NAME=$(az deployment sub show \
+        --name "phase1-registry-$ENV_NAME" \
+        --query 'properties.outputs.azurE_CONTAINER_REGISTRY_NAME.value' \
+        --output tsv 2>/dev/null || echo "")
+
+
+      echo "Found registry: $REGISTRY_NAME"
+
+      # Build and push container image remotely (no Docker login needed)
+      echo "Building container image remotely in Azure..."
+      az acr build -r $REGISTRY_NAME -t voice-live-agent/app-voiceagent:latest ./server
+
+      echo "✅ Container image built and pushed successfully!"
+    continueOnError: false
+
+
 services:
     app:
         project: server
@@ -9,3 +66,4 @@ services:
         docker:
           path: Dockerfile
           remoteBuild: true
+          # Use remoteBuild: true to skip local Docker requirement

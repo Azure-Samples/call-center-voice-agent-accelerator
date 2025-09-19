@@ -5,6 +5,7 @@ param tags object
 param exists bool
 param identityId string
 param containerRegistryName string
+param containerImageName string
 param aiServicesEndpoint string
 param modelDeploymentName string
 param aiServicesKeySecretUri string
@@ -17,15 +18,6 @@ var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = { name: logAnalyticsWorkspaceName }
-
-
-module fetchLatestImage './fetch-container-image.bicep' = {
-  name: '${containerAppName}-fetch-image'
-  params: {
-    exists: exists
-    name: containerAppName
-  }
-}
 
 resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
   name: containerEnvName
@@ -82,7 +74,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
       containers: [
         {
           name: 'main'
-          image: fetchLatestImage.outputs.?containers[?0].?image ??'${containerRegistryName}.azurecr.io/voice-live-agent/app-voiceagent:latest'
+          image: containerImageName
           env: [
             {
               name: 'AZURE_VOICE_LIVE_API_KEY'
