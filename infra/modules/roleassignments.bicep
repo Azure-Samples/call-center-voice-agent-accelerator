@@ -16,6 +16,16 @@ resource aiServicesRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
   }
 }
 
+resource azureAiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(aiServicesId, identityPrincipalId, 'Azure AI User')
+  scope: aiServicesResource
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
+    principalId: identityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 resource aiAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(aiServicesId, identityPrincipalId, 'ai-reader')
   scope: aiServicesResource
