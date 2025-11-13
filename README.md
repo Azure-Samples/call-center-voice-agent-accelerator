@@ -16,7 +16,7 @@ The Azure Communication Services Calls Automation APIs provide telephony integra
 </div>
 <br/>
 
-## DISCLAIMER:
+#### DISCLAIMER:
 With any AI solutions you create using these templates, you are responsible for assessing all associated risks, and for complying with all applicable laws and safety standards. Learn more in the transparency documents for [Voice Live API](https://learn.microsoft.com/azure/ai-foundry/responsible-ai/speech-service/voice-live/transparency-note) and [Azure Communication Services](https://learn.microsoft.com/azure/communication-services/concepts/privacy).
 
 
