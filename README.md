@@ -14,12 +14,12 @@ The Azure Communication Services Calls Automation APIs provide telephony integra
 [**Features**](#features) \| [**Getting Started**](#getting-started) \| [**Testing the Agent**](#testing-the-agent) \| [**Guidance**](#guidance) \| [**Resources**](#resources)
 
 </div>
+
 <br/>
 
-#### DISCLAIMER:
-With any AI solutions you create using these templates, you are responsible for assessing all associated risks, and for complying with all applicable laws and safety standards. Learn more in the transparency documents for [Voice Live API](https://learn.microsoft.com/azure/ai-foundry/responsible-ai/speech-service/voice-live/transparency-note) and [Azure Communication Services](https://learn.microsoft.com/azure/communication-services/concepts/privacy).
+**Note:** With any AI solutions you create using these templates, you are responsible for assessing all associated risks, and for complying with all applicable laws and safety standards. Learn more in the transparency documents for [Voice Live API](https://learn.microsoft.com/azure/ai-foundry/responsible-ai/speech-service/voice-live/transparency-note) and [Azure Communication Services](https://learn.microsoft.com/azure/communication-services/concepts/privacy).
 
-
+<br/>
 
 ## Features
 This sample demonstrates how to build a real-time voice agent using the [Azure Speech Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
