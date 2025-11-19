@@ -17,7 +17,7 @@
             ]
         }
     },
-    "postCreateCommand": "cd server && pip install git+https://github.com/astral-sh/uv.git && uv sync",
+    "postCreateCommand": "pip install --upgrade pip && cd server && pip install uv && uv sync",
     "remoteUser": "vscode",
     "hostRequirements": {
         "memory": "4gb"
