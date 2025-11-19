@@ -24,11 +24,11 @@ ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 
-# Upgrade pip to fix security vulnerability GHSA-4xh5-x5gv-qwph
-RUN pip install --upgrade pip
-
 # Create virtual environment explicitly
 RUN python -m venv /app/.venv
+
+# Upgrade pip in the virtual environment to fix security vulnerability GHSA-4xh5-x5gv-qwph
+RUN /app/.venv/bin/pip install --upgrade pip
 
 # Copy dependency files
 COPY pyproject.toml uv.lock /app/
