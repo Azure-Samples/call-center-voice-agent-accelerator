@@ -14,11 +14,29 @@ logger = logging.getLogger(__name__)
 
 
 def session_config():
-    """Returns the default session configuration for Voice Live."""
+    """Returns the optimized session configuration for Voice Live."""
     return {
         "type": "session.update",
         "session": {
-            "instructions": "You are a helpful AI assistant responding in natural, engaging language.",
+            # Concise, token-efficient instructions
+            "instructions": (
+                "You are Grace, a warm, empathetic intake receptionist for Mercy House Adult & Teen Challenge. "
+                "Answer only questions about Mercy House men's rehab or Sacred Grove women's rehab. "
+                "Do not give medical advice. "
+                "Capture caller's name, contact number, email, and reason for call for follow-up. "
+                "Confirm each detail with the caller. "
+                "If unsure or caller requests, escalate to a human. "
+                "Be natural, kind, and truly listen."
+            ),
+            # Context block for URLs and compliance (if supported by orchestration layer)
+            "context": {
+                "program_url": "https://mercyhouseatc.com/our-program",
+                "staff_url": "https://mercyhouseatc.com/meet-our-team",
+                "compliance": {
+                    "no_medical_advice": True,
+                    "pii_capture": ["name", "phone", "email"]
+                }
+            },
             "turn_detection": {
                 "type": "azure_semantic_vad",
                 "threshold": 0.3,
@@ -34,10 +52,27 @@ def session_config():
             "input_audio_noise_reduction": {"type": "azure_deep_noise_suppression"},
             "input_audio_echo_cancellation": {"type": "server_echo_cancellation"},
             "voice": {
-                "name": "en-US-Aria:DragonHDLatestNeural",
-                "type": "azure-standard",
-                "temperature": 0.8,
+                "name": "en-US-Emma2:DragonHDLatestNeural",
+                "type": "azure-neural",  # Use neural for HD voices
+                "temperature": 0.7,      # Lowered for more deterministic output
             },
+            "transcription": {
+                "enabled": True,
+                "destination": "secure_blob"
+            },
+            "analytics": {
+                "enabled": True,
+                "metrics": ["call_duration", "sentiment"]
+            },
+            "escalation": {
+                "trigger_phrases": [
+                    "I want to speak to a human",
+                    "I need help from a person",
+                    "I'm upset",
+                    "This is an emergency"
+                ],
+                "action": "immediate_handoff"
+            }
         },
     }
 
