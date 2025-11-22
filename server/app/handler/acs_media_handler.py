@@ -27,7 +27,7 @@ ERROR = "error"
 
 
 def session_config():
-    """Returns the optimized session configuration for Voice Live."""
+    """Returns the default session configuration for Voice Live."""
     return {
         "type": "session.update",
         "session": {
@@ -42,14 +42,14 @@ def session_config():
                 "Be natural, kind, and truly listen."
             ),
             # Context block for URLs and compliance
-            "context": {
-                "program_url": "https://mercyhouseatc.com/our-program",
-                "staff_url": "https://mercyhouseatc.com/meet-our-team",
-                "compliance": {
-                    "no_medical_advice": True,
-                    "pii_capture": ["name", "phone", "email"]
-                }
-            },
+            # "context": {
+            #     "program_url": "https://mercyhouseatc.com/our-program",
+            #     "staff_url": "https://mercyhouseatc.com/meet-our-team",
+            #     "compliance": {
+            #         "no_medical_advice": True,
+            #         "pii_capture": ["name", "phone", "email"]
+            #     }
+            # },
             "turn_detection": {
                 "type": "azure_semantic_vad",
                 "threshold": 0.3,
@@ -66,7 +66,7 @@ def session_config():
             "input_audio_echo_cancellation": {"type": "server_echo_cancellation"},
             "voice": {
                 "name": "en-US-Emma2:DragonHDLatestNeural",
-                "type": "azure-neural",  # Use neural for HD voices
+                "type": "azure-standard",  # Use neural for HD voices
                 "temperature": 0.7      # Lowered for more deterministic output
             }
         }
