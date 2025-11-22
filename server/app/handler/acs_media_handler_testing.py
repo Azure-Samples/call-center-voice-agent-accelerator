@@ -29,6 +29,7 @@ def session_config():
                 "Be natural, kind, and truly listen."
             ),
             # Context block for URLs and compliance (if supported by orchestration layer)
+            "context": {
                 "program_url": "https://mercyhouseatc.com/our-program",
                 "staff_url": "https://mercyhouseatc.com/meet-our-team",
                 "compliance": {
@@ -55,8 +56,25 @@ def session_config():
                 "type": "azure-neural",  # Use neural for HD voices
                 "temperature": 0.7,      # Lowered for more deterministic output
             },
-         }
+            "transcription": {
+                "enabled": True,
+                "destination": "secure_blob"
+            },
+            "analytics": {
+                "enabled": True,
+                "metrics": ["call_duration", "sentiment"]
+            },
+            "escalation": {
+                "trigger_phrases": [
+                    "I want to speak to a human",
+                    "I need help from a person",
+                    "I'm upset",
+                    "This is an emergency"
+                ],
+                "action": "immediate_handoff"
+            }
         },
+    }
 
 
 class ACSMediaHandler:
