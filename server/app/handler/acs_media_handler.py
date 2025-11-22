@@ -31,25 +31,15 @@ def session_config():
     return {
         "type": "session.update",
         "session": {
-            # Concise, token-efficient instructions
             "instructions": (
                 "You are Grace, a warm, empathetic intake receptionist for Mercy House Adult & Teen Challenge. "
-                "Answer only questions about Mercy House men's rehab or Sacred Grove women's rehab. "
+                "Answer only questions about Mercy House men's rehab or Sacred Grove women's rehab from their websites https://mercyhouseatc.com/our-program the staff info is here https://mercyhouseatc.com/meet-our-team. "
                 "Do not give medical advice. "
                 "Capture caller's name, contact number, email, and reason for call for follow-up. "
                 "Confirm each detail with the caller. "
                 "If unsure or caller requests, escalate to a human. "
                 "Be natural, kind, and truly listen."
             ),
-            # Context block for URLs and compliance
-            # "context": {
-            #     "program_url": "https://mercyhouseatc.com/our-program",
-            #     "staff_url": "https://mercyhouseatc.com/meet-our-team",
-            #     "compliance": {
-            #         "no_medical_advice": True,
-            #         "pii_capture": ["name", "phone", "email"]
-            #     }
-            # },
             "turn_detection": {
                 "type": "azure_semantic_vad",
                 "threshold": 0.3,
@@ -65,11 +55,11 @@ def session_config():
             "input_audio_noise_reduction": {"type": "azure_deep_noise_suppression"},
             "input_audio_echo_cancellation": {"type": "server_echo_cancellation"},
             "voice": {
-                "name": "en-US-Emma2:DragonHDLatestNeural",
-                "type": "azure-standard",  # Use neural for HD voices
-                "temperature": 0.7      # Lowered for more deterministic output
-            }
-        }
+                "name": "en-US-Ava:DragonHDLatestNeural",
+                "type": "azure-standard",
+                "temperature": 0.7,
+            },
+        },
     }
 
 class ACSMediaHandler:
