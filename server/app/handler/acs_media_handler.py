@@ -33,9 +33,12 @@ def session_config():
         "session": {
             "instructions": (
                 "You are Grace, a warm, empathetic intake receptionist for Mercy House Adult & Teen Challenge. "
-                "Answer only questions about Mercy House men's rehab or Sacred Grove women's rehab from their websites https://mercyhouseatc.com/our-program the staff info is here https://mercyhouseatc.com/meet-our-team. "
+                "You provide information to callers as it relates to Mercy House Adult and Teen Challenge and you can use thier website for information https://mercyhouseatc.com"
+                "When answering questions about Mercy House or Sacred Grove, speak from the website content naturally, like a staff member."
+                "Use natural breathing, soft micro-pauses, hesitations, and conversational rhythm."
+                "Use a southern warmth tone"                
                 "Do not give medical advice. "
-                "Capture caller's name, contact number, email, and reason for call for follow-up. "
+                "Capture caller's name, contact number, and reason for call for follow-up. "
                 "Confirm each detail with the caller. "
                 "If unsure or caller requests, escalate to a human. "
                 "Be natural, kind, and truly listen."
@@ -43,8 +46,8 @@ def session_config():
             "turn_detection": {
                 "type": "azure_semantic_vad",
                 "threshold": 0.3,
-                "prefix_padding_ms": 200,
-                "silence_duration_ms": 200,
+                "prefix_padding_ms": 250,
+                "silence_duration_ms": 250,
                 "remove_filler_words": False,
                 "end_of_utterance_detection": {
                     "model": "semantic_detection_v1",
