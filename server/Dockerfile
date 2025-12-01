@@ -3,6 +3,9 @@
 ###############################################
 FROM python:3.12-slim-bookworm AS base
 
+# Patch system pip so Defender sees the fixed version
+RUN pip install --no-cache-dir --upgrade pip==25.3
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     VIRTUAL_ENV=/app/.venv \
