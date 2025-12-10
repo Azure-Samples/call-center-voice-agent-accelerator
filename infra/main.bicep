@@ -92,6 +92,18 @@ module acs 'modules/acs.bicep' = {
   }
 }
 
+// Storage account for conversation transcripts
+module storage 'modules/storage.bicep' = {
+  name: 'storage-deployment'
+  scope: rg
+  params: {
+    location: location
+    environmentName: environmentName
+    uniqueSuffix: uniqueSuffix
+    tags: tags
+  }
+}
+
 var keyVaultName = toLower(replace('kv-${environmentName}-${uniqueSuffix}', '_', '-'))
 var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
 module keyvault 'modules/keyvault.bicep' = {
@@ -106,7 +118,7 @@ module keyvault 'modules/keyvault.bicep' = {
   dependsOn: [ appIdentity, acs ]
 }
 
-// Add role assignments 
+// Add role assignments
 module RoleAssignments 'modules/roleassignments.bicep' = {
   scope: rg
   name: 'role-assignments'
@@ -114,8 +126,9 @@ module RoleAssignments 'modules/roleassignments.bicep' = {
     identityPrincipalId: appIdentity.outputs.principalId
     aiServicesId: aiServices.outputs.aiServicesId
     keyVaultName: sanitizedKeyVaultName
+    storageAccountName: storage.outputs.storageAccountName
   }
-  dependsOn: [ keyvault, appIdentity ] 
+  dependsOn: [ keyvault, appIdentity, storage ]
 }
 
 module containerapp 'modules/containerapp.bicep' = {
@@ -135,8 +148,22 @@ module containerapp 'modules/containerapp.bicep' = {
     acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
     logAnalyticsWorkspaceName: logAnalyticsName
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+    storageBlobEndpoint: storage.outputs.blobEndpoint
+    storageContainerName: storage.outputs.containerName
   }
-  dependsOn: [keyvault, RoleAssignments]
+  dependsOn: [keyvault, RoleAssignments, storage]
+}
+
+// Event Grid subscription for ACS incoming calls
+module eventgrid 'modules/eventgrid.bicep' = {
+  name: 'eventgrid-deployment'
+  scope: rg
+  params: {
+    acsResourceId: acs.outputs.acsResourceId
+    webhookUrl: 'https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall'
+    tags: tags
+  }
+  dependsOn: [acs, containerapp]
 }
 
 
@@ -151,3 +178,5 @@ output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
 output SERVICE_API_ENDPOINTS array = ['${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName
+output AZURE_STORAGE_BLOB_ENDPOINT string = storage.outputs.blobEndpoint
+output AZURE_STORAGE_CONTAINER_NAME string = storage.outputs.containerName

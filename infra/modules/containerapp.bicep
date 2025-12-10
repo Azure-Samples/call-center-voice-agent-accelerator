@@ -12,6 +12,10 @@ param acsConnectionStringSecretUri string
 param logAnalyticsWorkspaceName string
 @description('The name of the container image')
 param imageName string = ''
+@description('Azure Blob Storage endpoint for transcripts')
+param storageBlobEndpoint string
+@description('Storage container name for transcripts')
+param storageContainerName string
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
@@ -100,6 +104,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'DEBUG_MODE'
               value: 'true'
+            }
+            {
+              name: 'AZURE_STORAGE_BLOB_ENDPOINT'
+              value: storageBlobEndpoint
+            }
+            {
+              name: 'AZURE_STORAGE_CONTAINER_NAME'
+              value: storageContainerName
             }
           ]
           resources: {

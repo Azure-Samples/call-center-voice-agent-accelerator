@@ -76,6 +76,70 @@
       font-size: 0.85rem;
       color: #666;
     }
+
+    .transcript-container {
+      width: 90%;
+      max-width: 600px;
+      margin-top: 2rem;
+      background: white;
+      border-radius: 0.75rem;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-height: 300px;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .transcript-container.active {
+      display: block;
+    }
+
+    .transcript-header {
+      padding: 0.75rem 1rem;
+      background: #0078d4;
+      color: white;
+      font-weight: 600;
+      border-radius: 0.75rem 0.75rem 0 0;
+      position: sticky;
+      top: 0;
+    }
+
+    .transcript-messages {
+      padding: 1rem;
+    }
+
+    .transcript-message {
+      margin-bottom: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      line-height: 1.4;
+    }
+
+    .transcript-message.user {
+      background: #e3f2fd;
+      text-align: right;
+      margin-left: 2rem;
+    }
+
+    .transcript-message.ai {
+      background: #f5f5f5;
+      text-align: left;
+      margin-right: 2rem;
+    }
+
+    .transcript-message .speaker {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #666;
+      margin-bottom: 0.25rem;
+    }
+
+    .transcript-message.user .speaker {
+      color: #1565c0;
+    }
+
+    .transcript-message.ai .speaker {
+      color: #388e3c;
+    }
   </style>
 </head>
 <body>
@@ -92,6 +156,11 @@
   </div>
 
   <audio id="ttsPlayer" autoplay></audio>
+
+  <div id="transcriptContainer" class="transcript-container">
+    <div class="transcript-header">Conversation Transcript</div>
+    <div id="transcriptMessages" class="transcript-messages"></div>
+  </div>
 
   <footer>
     Powered by Azure Voice Live • Demo Mode
@@ -171,6 +240,33 @@
       socket.close();
     }
 
+    function addTranscriptMessage(speaker, text) {
+      if (!text || !text.trim()) return;
+
+      const container = document.getElementById("transcriptMessages");
+      const messageDiv = document.createElement("div");
+      messageDiv.className = `transcript-message ${speaker}`;
+
+      const speakerLabel = document.createElement("div");
+      speakerLabel.className = "speaker";
+      speakerLabel.textContent = speaker === "user" ? "You" : "AI Agent";
+
+      const textDiv = document.createElement("div");
+      textDiv.textContent = text;
+
+      messageDiv.appendChild(speakerLabel);
+      messageDiv.appendChild(textDiv);
+      container.appendChild(messageDiv);
+
+      // Auto-scroll to bottom
+      const transcriptContainer = document.getElementById("transcriptContainer");
+      transcriptContainer.scrollTop = transcriptContainer.scrollHeight;
+    }
+
+    function clearTranscript() {
+      document.getElementById("transcriptMessages").innerHTML = "";
+    }
+
     function startStreaming() {
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
       let wsHost = window.location.host; 
@@ -183,6 +279,9 @@
         await startMicrophone();
         document.getElementById("startBtn").disabled = true;
         document.getElementById("stopBtn").disabled = false;
+        // Show and clear transcript container
+        clearTranscript();
+        document.getElementById("transcriptContainer").classList.add("active");
       };
 
       socket.onmessage = async (event) => {
@@ -193,7 +292,8 @@
             stopPlayback();
           }
           if (msg.Kind === "Transcription") {
-            console.log("Transcript:", msg.Text);
+            console.log("Transcript:", msg.Speaker || "ai", msg.Text);
+            addTranscriptMessage(msg.Speaker || "ai", msg.Text);
           }
          }
         else if (event.data instanceof ArrayBuffer) {

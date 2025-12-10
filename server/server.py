@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import uuid
 
 from app.handler.acs_event_handler import AcsEventHandler
 from app.handler.acs_media_handler import ACSMediaHandler
@@ -18,6 +19,9 @@ app.config["ACS_DEV_TUNNEL"] = os.getenv("ACS_DEV_TUNNEL", "")
 app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
+# Storage configuration for transcripts
+app.config["AZURE_STORAGE_BLOB_ENDPOINT"] = os.getenv("AZURE_STORAGE_BLOB_ENDPOINT", "")
+app.config["AZURE_STORAGE_CONTAINER_NAME"] = os.getenv("AZURE_STORAGE_CONTAINER_NAME", "transcripts")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -45,8 +49,12 @@ async def acs_event_callbacks(context_id):
 async def acs_ws():
     """WebSocket endpoint for ACS to send audio to Voice Live."""
     logger = logging.getLogger("acs_ws")
-    logger.info("Incoming ACS WebSocket connection")
-    handler = ACSMediaHandler(app.config)
+    # Extract caller ID from query params if available
+    caller_id = websocket.args.get("callerId", "acs-caller")
+    conversation_id = str(uuid.uuid4())
+    logger.info("Incoming ACS WebSocket connection (conversation: %s, caller: %s)", conversation_id, caller_id)
+
+    handler = ACSMediaHandler(app.config, conversation_id=conversation_id, caller_id=caller_id)
     await handler.init_incoming_websocket(websocket, is_raw_audio=False)
     asyncio.create_task(handler.connect())
     try:
@@ -55,14 +63,21 @@ async def acs_ws():
             await handler.acs_to_voicelive(msg)
     except Exception:
         logger.exception("ACS WebSocket connection closed")
+    finally:
+        # Save transcript when connection closes
+        await handler.close()
+        logger.info("Transcript saved and resources cleaned up for conversation %s", conversation_id)
 
 
 @app.websocket("/web/ws")
 async def web_ws():
     """WebSocket endpoint for web clients to send audio to Voice Live."""
     logger = logging.getLogger("web_ws")
-    logger.info("Incoming Web WebSocket connection")
-    handler = ACSMediaHandler(app.config)
+    conversation_id = str(uuid.uuid4())
+    caller_id = f"web-client-{conversation_id[:8]}"
+    logger.info("Incoming Web WebSocket connection (conversation: %s)", conversation_id)
+
+    handler = ACSMediaHandler(app.config, conversation_id=conversation_id, caller_id=caller_id)
     await handler.init_incoming_websocket(websocket, is_raw_audio=True)
     asyncio.create_task(handler.connect())
     try:
@@ -71,6 +86,10 @@ async def web_ws():
             await handler.web_to_voicelive(msg)
     except Exception:
         logger.exception("Web WebSocket connection closed")
+    finally:
+        # Save transcript when connection closes
+        await handler.close()
+        logger.info("Transcript saved and resources cleaned up for conversation %s", conversation_id)
 
 
 @app.route("/")

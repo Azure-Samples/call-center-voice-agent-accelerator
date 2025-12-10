@@ -67,8 +67,9 @@ class AcsEventHandler:
                 callback_uri = f"{callback_events_uri}/{guid}?{query_parameters}"
 
                 parsed_url = urlparse(callback_events_uri)
+                # Include caller ID in websocket URL for transcript tracking
                 websocket_url = urlunparse(
-                    ("wss", parsed_url.netloc, "/acs/ws", "", "", "")
+                    ("wss", parsed_url.netloc, "/acs/ws", "", query_parameters, "")
                 )
 
                 logger.info("callback url: %s", callback_uri)

@@ -5,10 +5,13 @@ import base64
 import json
 import logging
 import uuid
+from typing import Optional
 
 from azure.identity.aio import ManagedIdentityCredential
 from websockets.asyncio.client import connect as ws_connect
 from websockets.typing import Data
+
+from app.handler.transcript_service import ConversationTracker, TranscriptService
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +48,7 @@ def session_config():
 class ACSMediaHandler:
     """Manages audio streaming between client and Azure Voice Live API."""
 
-    def __init__(self, config):
+    def __init__(self, config, conversation_id: Optional[str] = None, caller_id: Optional[str] = None):
         self.endpoint = config["AZURE_VOICE_LIVE_ENDPOINT"]
         self.model = config["VOICE_LIVE_MODEL"]
         self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
@@ -55,6 +58,12 @@ class ACSMediaHandler:
         self.send_task = None
         self.incoming_websocket = None
         self.is_raw_audio = True
+
+        # Transcript tracking
+        self.conversation_id = conversation_id or str(uuid.uuid4())
+        self.caller_id = caller_id or "unknown"
+        self.transcript_service = TranscriptService(config)
+        self.conversation_tracker: Optional[ConversationTracker] = None
 
     def _generate_guid(self):
         return str(uuid.uuid4())
@@ -93,6 +102,17 @@ class ACSMediaHandler:
         """Sets up incoming ACS WebSocket."""
         self.incoming_websocket = socket
         self.is_raw_audio = is_raw_audio
+        # Initialize conversation tracker
+        self.conversation_tracker = ConversationTracker(
+            conversation_id=self.conversation_id,
+            caller_id=self.caller_id,
+            transcript_service=self.transcript_service,
+        )
+        logger.info(
+            "Initialized conversation tracker for %s (caller: %s)",
+            self.conversation_id,
+            self.caller_id,
+        )
 
     async def audio_to_voicelive(self, audio_b64: str):
         """Queues audio data to be sent to Voice Live API."""
@@ -143,6 +163,13 @@ class ACSMediaHandler:
                     case "conversation.item.input_audio_transcription.completed":
                         transcript = event.get("transcript")
                         logger.info("User: %s", transcript)
+                        # Track user transcript
+                        if self.conversation_tracker and transcript:
+                            self.conversation_tracker.add_user_message(transcript)
+                        # Send user transcript to client for display
+                        await self.send_message(
+                            json.dumps({"Kind": "Transcription", "Text": transcript, "Speaker": "user"})
+                        )
 
                     case "conversation.item.input_audio_transcription.failed":
                         error_msg = event.get("error")
@@ -160,8 +187,11 @@ class ACSMediaHandler:
                     case "response.audio_transcript.done":
                         transcript = event.get("transcript")
                         logger.info("AI: %s", transcript)
+                        # Track AI transcript
+                        if self.conversation_tracker and transcript:
+                            self.conversation_tracker.add_ai_message(transcript)
                         await self.send_message(
-                            json.dumps({"Kind": "Transcription", "Text": transcript})
+                            json.dumps({"Kind": "Transcription", "Text": transcript, "Speaker": "ai"})
                         )
 
                     case "response.audio.delta":
@@ -221,3 +251,27 @@ class ACSMediaHandler:
         """Encodes raw audio bytes and sends to Voice Live API."""
         audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
         await self.audio_to_voicelive(audio_b64)
+
+    async def save_transcript_and_cleanup(self):
+        """Saves the transcript and cleans up resources."""
+        try:
+            if self.conversation_tracker:
+                blob_name = await self.conversation_tracker.save()
+                if blob_name:
+                    logger.info(
+                        "Transcript saved to %s for conversation %s",
+                        blob_name,
+                        self.conversation_id,
+                    )
+        except Exception:
+            logger.exception("Failed to save transcript for conversation %s", self.conversation_id)
+        finally:
+            await self.transcript_service.close()
+
+    async def close(self):
+        """Closes all connections and saves transcript."""
+        await self.save_transcript_and_cleanup()
+        if self.ws:
+            await self.ws.close()
+        if self.send_task:
+            self.send_task.cancel()

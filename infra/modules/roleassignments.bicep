@@ -1,6 +1,7 @@
 param identityPrincipalId string
 param aiServicesId string
 param keyVaultName string
+param storageAccountName string
 
 resource aiServicesResource 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: last(split(aiServicesId, '/'))
@@ -46,6 +47,23 @@ resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7')
+    principalId: identityPrincipalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Storage Account for transcripts
+resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: storageAccountName
+}
+
+// Storage Blob Data Contributor role for the managed identity
+resource storageBlobDataContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(storageAccount.id, identityPrincipalId, 'Storage Blob Data Contributor')
+  scope: storageAccount
+  properties: {
+    // Storage Blob Data Contributor role ID
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
     principalId: identityPrincipalId
     principalType: 'ServicePrincipal'
   }
