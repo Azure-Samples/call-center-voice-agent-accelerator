@@ -1,5 +1,5 @@
 # Overview
-This project is managed using `pyproject.toml` and the [`uv`](https://github.com/astral-sh/uv) package manager for fast Python dependency management.
+The Twilio real-time voice service is managed using `pyproject.toml` and the [`uv`](https://github.com/astral-sh/uv) package manager for fast Python dependency management.
 
 ## 1. Test with Web Client
 
@@ -24,66 +24,61 @@ If you prefer Docker or are running in GitHub Codespaces:
 1. Build the image:
 
     ```
-    docker build -t voiceagent .
+    docker build -t twilio-realtime-voice .
     ```
 
 2. Run the image with local environment variables:
 
     ```
-    docker run --env-file .env -p 8000:8000 -it voiceagent
+    docker run --env-file .env -p 8000:8000 -it twilio-realtime-voice
     ```
 3. Open [http://127.0.0.1:8000](http://127.0.0.1:8000) and click **Start** to interact with the agent.
 
-## 2. Test with ACS Client (Phone Call)
+## 2. Test with Twilio Voice (Phone Call)
 
-To test Azure Communication Services (ACS) locally, we’ll expose the local server using **Azure DevTunnels**.
+You can stream live calls from Twilio into the agent by enabling **Twilio Media Streams** and
+pointing the `<Stream>` target to the app's `/twilio/stream` WebSocket endpoint.
 
-> DevTunnels allow public HTTP/S access to your local environment — ideal for webhook testing.
+### Expose Your Local Server (optional)
 
-1. [Install Azure Dev CLI](https://learn.microsoft.com/azure/developer/dev-tunnels/overview) if not already installed.
+For local development, make your Quart server reachable on the public internet using a tunneling
+solution such as [ngrok](https://ngrok.com/) or [Azure Dev Tunnels](https://learn.microsoft.com/azure/developer/dev-tunnels/overview).
 
-2. Log in and create a tunnel:
+```
+ngrok http https://localhost:8000
+```
 
-    ```bash
-    devtunnel login
-    devtunnel create --allow-anonymous
-    devtunnel port create -p 8000
-    devtunnel host
-    ```
+Take note of the generated `wss://` URL, e.g. `wss://<random>.ngrok.app/twilio/stream`.
 
-3. The final command will output a URL like:
+### Configure a Twilio Voice Application
 
-    ```
-    https://<your-tunnel>.devtunnels.ms:8000
-    ```
+1. In the [Twilio Console](https://console.twilio.com/), create (or edit) a **Voice** application.
+2. For the call handler, provide TwiML that connects the call to your streaming endpoint. Example:
 
-4. Add this URL to your `.env` file under:
+        ```xml
+        <?xml version="1.0" encoding="UTF-8"?>
+        <Response>
+            <Connect>
+                <Stream url="wss://<your-domain>/twilio/stream" />
+            </Connect>
+        </Response>
+        ```
 
-    ```
-    ACS_DEV_TUNNEL=https://<your-tunnel>.devtunnels.ms:8000
-    ```
+        Replace `<your-domain>` with your tunnel or production hostname. Twilio requires TLS, so ensure
+        the URL uses `wss://`.
 
-### Set Up Incoming Call Event
+3. Assign the voice application to a Twilio phone number.
 
-1. Go to your **Communication Services** resource in the Azure Portal.
-2. In the left menu, click **Events** → **+ Event Subscription**.
-3. Use the following settings:
-   - **Event type**: `IncomingCall`
-   - **Endpoint type**: `Web Hook`
-   - **Endpoint URL**:  
-     ```
-     https://<your-tunnel>.devtunnels.ms:8000/acs/incomingcall
-     ```
+### Place a Test Call
 
-> Ensure both your local Python server and DevTunnel are running before creating the subscription.
-
-### Call the Agent
-
-1. [Get a phone number](https://learn.microsoft.com/azure/communication-services/quickstarts/telephony/get-phone-number?tabs=windows&pivots=platform-azp-new) for your ACS resource if not already provisioned.
-2. Call the number. Your call will route to your local agent.
+1. Start the Quart server (`uv run server.py`) and make sure your tunneling session is active.
+2. Call the configured Twilio number. Twilio will open a WebSocket to `/twilio/stream`, streaming
+     μ-law audio in real time. The server converts it to PCM, forwards it to Azure Voice Live, and
+     sends live transcripts back over the WebSocket as `message` events.
+3. Check the server logs (and optionally the Twilio debugger) to confirm audio is flowing.
 
 ## Recap
 
 - Use the **web client** for fast local testing.
-- Use **DevTunnel + ACS** to simulate phone calls and test telephony integration.
-- Customize the `.env` file, system prompts, and runtime behavior to fit your use case.
+- Use **Twilio Media Streams** to drive live phone audio into the transcription pipeline.
+- Customize the `.env` file, prompts, and runtime behavior to fit your use case.

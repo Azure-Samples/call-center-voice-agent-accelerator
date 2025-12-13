@@ -18,7 +18,7 @@ param sku object = {
 param zoneRedundancy string = 'Disabled'
 
 // Hardcode container registry name with unique suffix
-var containerRegistryName = take('cr${uniqueSuffix}', 32)
+var containerRegistryName = take('trvcr${uniqueSuffix}', 32)
 
 // 2022-02-01-preview needed for anonymousPullEnabled
 resource containerRegistry 'Microsoft.ContainerRegistry/registries@2022-02-01-preview' = {

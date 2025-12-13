@@ -1,10 +1,10 @@
-name: voice-live-agent
+name: twilio-realtime-voice
 metadata:
-  template: voice-live-agent@0.1.0
+  template: twilio-realtime-voice@0.1.0
 requiredVersions:
   azd: ">=1.14.0"
 services:
-    app:
+  twilio-realtime-voice:
         project: server
         host: containerapp
         language: python

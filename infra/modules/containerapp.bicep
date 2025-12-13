@@ -8,15 +8,14 @@ param identityClientId string
 param containerRegistryName string
 param aiServicesEndpoint string
 param modelDeploymentName string
-param acsConnectionStringSecretUri string
 param logAnalyticsWorkspaceName string
 @description('The name of the container image')
 param imageName string = ''
 
 // Helper to sanitize environmentName for valid container app name
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
-var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
-var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var containerAppName = take('trv-app-${sanitizedEnvName}-${uniqueSuffix}', 32)
+var containerEnvName = take('trv-env-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
 resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2022-10-01' existing = { name: logAnalyticsWorkspaceName }
 
@@ -47,7 +46,7 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-05-01' = {
 resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
   name: containerAppName
   location: location
-  tags: union(tags, { 'azd-service-name': 'app' })
+  tags: union(tags, { 'azd-service-name': 'twilio-realtime-voice' })
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: { '${identityId}': {} }
@@ -67,18 +66,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           identity: identityId
         }
       ]
-      secrets: [
-        {
-          name: 'acs-connection-string'
-          keyVaultUrl: acsConnectionStringSecretUri
-          identity: identityId
-        }
-      ]
     }
     template: {
       containers: [
         {
-          name: 'main'
+          name: 'twilio-realtime-voice'
           image: !empty(imageName) ? imageName : 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
           env: [
             {
@@ -92,10 +84,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'VOICE_LIVE_MODEL'
               value: modelDeploymentName
-            }
-            {
-              name: 'ACS_CONNECTION_STRING'
-              secretRef: 'acs-connection-string'
             }
             {
               name: 'DEBUG_MODE'

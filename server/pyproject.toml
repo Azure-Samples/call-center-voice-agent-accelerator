@@ -1,7 +1,7 @@
 [project]
-name = "voice-live-agent"
+name = "twilio-realtime-voice"
 version = "0.1.0"
-description = "Real-time voice agent with Azure Voice Live and ACS/Web streaming clients"
+description = "Twilio-powered real-time voice agent with Azure Voice Live and web clients"
 requires-python = ">=3.9"
 
 dependencies = [
@@ -10,12 +10,12 @@ dependencies = [
     "httpx>=0.28.0",
     "python-dotenv>=1.1.0",
     "quart-cors>=0.8.0",
-    "azure-core>=1.34.0",
-    "azure-communication-identity>=1.5.0",
     "aiohttp>=3.12.14",
-    "azure-eventgrid>=4.22.0",
     "azure-identity>=1.23.0",
-    "azure-communication-callautomation>=1.4.0",
+    "azure-storage-blob>=12.22.0",
+    "azure-data-tables>=12.7.0",
+    "azure-storage-queue>=12.10.0",
+    "twilio>=9.3.0",
     "openai[realtime]>=1.93.0",
     "h2>=4.3.0"
 ]

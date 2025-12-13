@@ -6,7 +6,7 @@ param disableLocalAuth bool = true
 
 // Voice live api only supported on two regions now 
 var location string = 'swedencentral'
-var aiServicesName string = 'aiServices-${environmentName}-${uniqueSuffix}'
+var aiServicesName string = take('trv-ai-${environmentName}-${uniqueSuffix}', 63)
 
 @allowed([
   'S0'
@@ -31,7 +31,7 @@ resource aiServices 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
       defaultAction: 'Allow'
     }
     disableLocalAuth: disableLocalAuth
-    customSubDomainName: 'domain-${environmentName}-${uniqueSuffix}' 
+    customSubDomainName: take('trv-${environmentName}-${uniqueSuffix}', 63)
   }
 }
 

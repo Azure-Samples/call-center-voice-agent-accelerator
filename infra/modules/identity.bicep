@@ -4,7 +4,7 @@ param uniqueSuffix string
 
 var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', ''), '--', ''), '[^a-zA-Z0-9-]', ''), '_', ''))
 
-var userIdentityName = take('${sanitizedEnvName}-${uniqueSuffix}-id', 32)
+var userIdentityName = take('trv-${sanitizedEnvName}-${uniqueSuffix}-id', 32)
 
 resource appIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: userIdentityName

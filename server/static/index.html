@@ -79,7 +79,7 @@
   </style>
 </head>
 <body>
-  <h1>🎙️ Voice Live Demo UX</h1>
+  <h1>🎙️ Twilio Real-time Voice Demo</h1>
   <div class="subtitle">Talk to an AI agent in real time. Click below to start.</div>
 
   <div class="controls">
@@ -193,7 +193,8 @@
             stopPlayback();
           }
           if (msg.Kind === "Transcription") {
-            console.log("Transcript:", msg.Text);
+            const speaker = msg.Speaker ? `${msg.Speaker}:` : "Transcript:";
+            console.log(speaker, msg.Text);
           }
          }
         else if (event.data instanceof ArrayBuffer) {

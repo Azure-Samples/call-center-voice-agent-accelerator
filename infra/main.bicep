@@ -23,8 +23,12 @@ param modelName string = ' gpt-4o-mini'
 param principalId string = ''
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
-var tags = {'azd-env-name': environmentName }
-var rgName = 'rg-${environmentName}-${uniqueSuffix}'
+var tags = {
+  'azd-env-name': environmentName
+  'solution-name': 'twilio-realtime-voice'
+}
+var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var rgName = take('rg-trv-${sanitizedEnvName}-${uniqueSuffix}', 90)
 
 resource rg 'Microsoft.Resources/resourceGroups@2024-11-01' = {
   name: rgName
@@ -43,9 +47,9 @@ module appIdentity './modules/identity.bicep' = {
   }
 }
 
-var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
-var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
-var appInsightsName = take('insights-${sanitizedEnvName}-${uniqueSuffix}', 63)
+var resourceBase = take('trv-${sanitizedEnvName}-${uniqueSuffix}', 40)
+var logAnalyticsName = take('${resourceBase}-log', 63)
+var appInsightsName = take('${resourceBase}-insights', 63)
 module monitoring 'modules/monitoring/monitor.bicep' = {
   name: 'monitor'
   scope: rg
@@ -82,17 +86,7 @@ module aiServices 'modules/aiservices.bicep' = {
   dependsOn: [ appIdentity ]
 }
 
-module acs 'modules/acs.bicep' = {
-  name: 'acs-deployment'
-  scope: rg
-  params: {
-    environmentName: environmentName
-    uniqueSuffix: uniqueSuffix
-    tags: tags
-  }
-}
-
-var keyVaultName = toLower(replace('kv-${environmentName}-${uniqueSuffix}', '_', '-'))
+var keyVaultName = toLower(replace('trv-kv-${sanitizedEnvName}-${uniqueSuffix}', '_', '-'))
 var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault-deployment'
@@ -101,9 +95,8 @@ module keyvault 'modules/keyvault.bicep' = {
     location: location
     keyVaultName: sanitizedKeyVaultName
     tags: tags
-    acsConnectionString: acs.outputs.acsConnectionString
   }
-  dependsOn: [ appIdentity, acs ]
+  dependsOn: [ appIdentity ]
 }
 
 // Add role assignments 
@@ -132,7 +125,6 @@ module containerapp 'modules/containerapp.bicep' = {
     containerRegistryName: registry.outputs.name
     aiServicesEndpoint: aiServices.outputs.aiServicesEndpoint
     modelDeploymentName: modelName
-    acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
     logAnalyticsWorkspaceName: logAnalyticsName
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }
@@ -148,6 +140,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = ['${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
+output SERVICE_API_ENDPOINTS array = ['wss://${containerapp.outputs.containerAppFqdn}/twilio/stream']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName

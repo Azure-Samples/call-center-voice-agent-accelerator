@@ -1,5 +1,5 @@
 {
-    "name": "call-center-voice-agent",
+    "name": "twilio-realtime-voice",
     "image": "mcr.microsoft.com/devcontainers/python:3.12-bullseye",
     "forwardPorts": [50505],
     "features": {
