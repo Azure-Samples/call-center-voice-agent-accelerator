@@ -19,9 +19,21 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
 
+# Ambient Scenes Configuration
+# Options: none, office, call_center (or custom presets)
+app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
 )
+logger = logging.getLogger(__name__)
+
+# Log ambient configuration on startup
+ambient_preset = app.config["AMBIENT_PRESET"]
+if ambient_preset and ambient_preset != "none":
+    logger.info(f"Ambient scenes ENABLED: preset='{ambient_preset}'")
+else:
+    logger.info("Ambient scenes DISABLED (preset=none)")
 
 acs_handler = AcsEventHandler(app.config)
 
@@ -77,6 +89,12 @@ async def web_ws():
 async def index():
     """Serves the static index page."""
     return await app.send_static_file("index.html")
+
+
+@app.route("/static/audio/<filename>")
+async def serve_audio(filename):
+    """Serves audio files from the static/audio directory."""
+    return await app.send_static_file(f"audio/{filename}")
 
 
 if __name__ == "__main__":

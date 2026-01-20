@@ -27,6 +27,7 @@ This sample demonstrates how to build a real-time voice agent using the [Azure S
 The solution includes:
 - A backend service that connects to the **Voice Live API** for real-time ASR, LLM and TTS
 - Two client options: **Web browser** (microphone/speaker) and **Azure Communication Services (ACS)** phone calls
+- **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
 - Easy extension to other client types such as [Audiohook](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-use-audiohook)
 
@@ -234,6 +235,76 @@ Once your event subscription is configured and the phone number is active:
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
 Please follow the instructions in [the instructions in `service`](./service/README.md)
+
+<br/>
+
+## Optional Features
+
+### 🎧 Ambient Scenes
+
+Add realistic background audio to your voice agent to simulate real-world call center environments. This feature works for both web browser and phone (ACS) clients.
+
+**Available Presets:**
+
+| Preset | Description |
+|--------|-------------|
+| `none` | Disabled (default) - clean audio with no background |
+| `office` | Quiet office ambient (keyboard typing, soft murmurs) |
+| `call_center` | Busy call center background (phones, conversations) |
+| *custom* | Add your own audio files (see below) |
+
+**How to Enable:**
+
+1. Set the `AMBIENT_PRESET` environment variable in your `.env` file:
+   ```
+   AMBIENT_PRESET=call_center
+   ```
+
+2. For Azure deployment, set it before running `azd up`:
+   ```bash
+   azd env set AMBIENT_PRESET call_center
+   azd up
+   ```
+
+**Adjusting Volume:**
+
+The ambient volume is controlled by `_ambient_gain` in `server/app/handler/ambient_mixer.py`:
+
+```python
+self._ambient_gain = 0.08  # Default: subtle background
+```
+
+| Value | Effect |
+|-------|--------|
+| `0.05` | Very quiet (barely audible) |
+| `0.08` | Subtle (default) |
+| `0.12` | Moderate |
+| `0.20` | Noticeable |
+
+**Using Custom Audio Files:**
+
+You can add your own ambient audio files:
+
+1. Prepare your audio file with these requirements:
+   - **Format:** WAV (uncompressed PCM)
+   - **Sample Rate:** 24000 Hz
+   - **Bit Depth:** 16-bit signed
+   - **Channels:** Mono
+   - **Duration:** 30-60 seconds (will loop seamlessly)
+
+2. Place the file in `server/app/audio/`
+
+3. Register the preset in `server/app/handler/ambient_mixer.py`:
+   ```python
+   PRESETS = {
+       "none": {"file": None},
+       "office": {"file": "office.wav"},
+       "call_center": {"file": "callcenter.wav"},
+       "my_custom": {"file": "my_audio.wav"},  # Add your preset
+   }
+   ```
+
+4. Set `AMBIENT_PRESET=my_custom` in your `.env` file
 
 <br/>
 
