@@ -164,5 +164,3 @@ cython_debug/
 # DevTunnels
 DevTunnels
 .azure
-
-# Audio files - custom audio in static folder (if any)
