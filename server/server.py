@@ -65,8 +65,12 @@ async def acs_ws():
         while True:
             msg = await websocket.receive()
             await handler.acs_to_voicelive(msg)
+    except asyncio.CancelledError:
+        logger.info("ACS WebSocket cancelled")
     except Exception:
         logger.exception("ACS WebSocket connection closed")
+    finally:
+        await handler.stop_audio_output()
 
 
 @app.websocket("/web/ws")
@@ -81,8 +85,12 @@ async def web_ws():
         while True:
             msg = await websocket.receive()
             await handler.web_to_voicelive(msg)
+    except asyncio.CancelledError:
+        logger.info("Web WebSocket cancelled")
     except Exception:
         logger.exception("Web WebSocket connection closed")
+    finally:
+        await handler.stop_audio_output()
 
 
 @app.route("/")

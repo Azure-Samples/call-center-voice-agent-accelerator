@@ -44,7 +44,7 @@ class AmbientMixer:
         # Fixed ambient gain - used for both TTS mixing and ambient-only
         # This ensures consistent ambient volume at all times
         # Lower value = quieter ambient. Range: 0.05 (very quiet) to 0.3 (noticeable)
-        self._ambient_gain = 0.08  # Consistent low ambient level
+        self._ambient_gain = 0.20  # Consistent low ambient level
         
         logger.info(f"AmbientMixer initialized: preset={preset}, ambient_gain={self._ambient_gain}")
 
@@ -91,9 +91,9 @@ class AmbientMixer:
                     audio
                 )
             
-            # Normalize to -20dB RMS
+            # Normalize to -40dB RMS (very quiet background)
             rms = np.sqrt(np.mean(audio**2))
-            target_rms = 10 ** (-20 / 20)  # -20dB
+            target_rms = 10 ** (-40 / 20)  # -40dB
             if rms > 1e-10:
                 audio = audio * (target_rms / rms)
             
