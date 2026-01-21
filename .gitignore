@@ -165,8 +165,4 @@ cython_debug/
 DevTunnels
 .azure
 
-# Audio files (only track config, users provide their own audio files)
-server/app/audio/*.wav
-server/app/audio/*.mp3
-server/static/audio/*.wav
-server/static/audio/*.mp3
+# Audio files - custom audio in static folder (if any)
