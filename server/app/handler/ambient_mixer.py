@@ -175,37 +175,4 @@ class AmbientMixer:
         output = self._soft_clip(output)
         return (output * 32767).astype(np.int16).tobytes()
 
-    def mix_tts_with_ambient(self, tts_bytes: bytes) -> bytes:
-        """
-        Mix TTS audio with ambient noise at a fixed ambient level.
-        
-        Args:
-            tts_bytes: PCM 16-bit mono TTS audio bytes
-            
-        Returns:
-            Mixed PCM 16-bit mono audio bytes
-        """
-        if not self.is_enabled():
-            return tts_bytes  # Return original TTS if ambient disabled
-            
-        # Convert TTS bytes to float32
-        tts = np.frombuffer(tts_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-        
-        # Get matching noise chunk
-        noise = self._get_noise_chunk(len(tts))
-        
-        # Apply fixed ambient gain (consistent volume)
-        scaled_noise = noise * self._ambient_gain
-        
-        # Mix TTS with ambient
-        mixed = tts + scaled_noise
-        
-        # Soft clip to prevent distortion
-        mixed = self._soft_clip(mixed)
-        
-        # Convert back to int16 bytes
-        return (mixed * 32767).astype(np.int16).tobytes()
 
-    def reset(self) -> None:
-        """Reset noise position to start (for new calls)."""
-        self._noise_position = 0
