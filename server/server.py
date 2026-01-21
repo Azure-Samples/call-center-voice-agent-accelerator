@@ -99,11 +99,5 @@ async def index():
     return await app.send_static_file("index.html")
 
 
-@app.route("/static/audio/<filename>")
-async def serve_audio(filename):
-    """Serves audio files from the static/audio directory."""
-    return await app.send_static_file(f"audio/{filename}")
-
-
 if __name__ == "__main__":
     app.run(debug=True, host="0.0.0.0", port=8000)
