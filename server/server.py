@@ -19,9 +19,21 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
 
+# Ambient Scenes Configuration
+# Options: none, office, call_center (or custom presets)
+app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
+
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
 )
+logger = logging.getLogger(__name__)
+
+# Log ambient configuration on startup
+ambient_preset = app.config["AMBIENT_PRESET"]
+if ambient_preset and ambient_preset != "none":
+    logger.info(f"Ambient scenes ENABLED: preset='{ambient_preset}'")
+else:
+    logger.info("Ambient scenes DISABLED (preset=none)")
 
 acs_handler = AcsEventHandler(app.config)
 
@@ -53,8 +65,12 @@ async def acs_ws():
         while True:
             msg = await websocket.receive()
             await handler.acs_to_voicelive(msg)
+    except asyncio.CancelledError:
+        logger.info("ACS WebSocket cancelled")
     except Exception:
         logger.exception("ACS WebSocket connection closed")
+    finally:
+        await handler.stop_audio_output()
 
 
 @app.websocket("/web/ws")
@@ -69,8 +85,12 @@ async def web_ws():
         while True:
             msg = await websocket.receive()
             await handler.web_to_voicelive(msg)
+    except asyncio.CancelledError:
+        logger.info("Web WebSocket cancelled")
     except Exception:
         logger.exception("Web WebSocket connection closed")
+    finally:
+        await handler.stop_audio_output()
 
 
 @app.route("/")
