@@ -34,7 +34,7 @@ The solution includes:
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
 ### Architecture diagram
-|![Architecture Diagram](./docs/images/architecture_v0.0.1.png)|
+|![Architecture Diagram](./docs/images/architecture_v0.0.2.png)|
 |---|
 
 <br/>
@@ -235,6 +235,22 @@ Once your event subscription is configured and the phone number is active:
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
 Please follow the instructions in [the instructions in `service`](./service/README.md)
+
+<br/>
+
+## Use Voice Live with Foundry Agents
+
+The Voice Live API supports connecting to an existing **Azure AI Foundry Agent**, allowing you to leverage pre-built capabilities, knowledge bases, and orchestration features alongside real-time voice interactions.
+
+In the `session.update` configuration, you can set different properties such as the model, voice settings, turn detection, and agent connection. For detailed configuration options and step-by-step instructions, refer to the official documentation:
+
+👉 [Get started with Voice Live and Azure AI Foundry Agent Service](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-agents-quickstart?tabs=windows%2Ckeyless&pivots=ai-foundry-portal)
+
+After updating your configuration, deploy the changes to your Container App:
+
+```bash
+azd deploy
+```
 
 <br/>
 
