@@ -93,7 +93,11 @@ module acs 'modules/acs.bicep' = {
 }
 
 var keyVaultName = toLower(replace('kv-${environmentName}-${uniqueSuffix}', '_', '-'))
-var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
+var keyVaultNameCollapsed = replace(replace(replace(keyVaultName, '--', '-'), '--', '-'), '--', '-')
+var keyVaultPrefixed = 'kv${keyVaultNameCollapsed}'
+var keyVaultTruncated = take(keyVaultPrefixed, 24)
+var keyVaultLastChar = substring(keyVaultTruncated, length(keyVaultTruncated) - 1, 1)
+var sanitizedKeyVaultName = keyVaultLastChar == '-' ? '${substring(keyVaultTruncated, 0, length(keyVaultTruncated) - 1)}a' : keyVaultTruncated
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault-deployment'
   scope: rg
