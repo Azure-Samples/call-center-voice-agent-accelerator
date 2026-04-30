@@ -21,6 +21,9 @@ param appExists bool
 param modelName string = ' gpt-4o-mini'
 @description('Id of the user or app to assign application roles. If ommited will be generated from the user assigned identity.')
 param principalId string = ''
+@secure()
+@description('Twilio Auth Token for webhook signature validation')
+param twilioAuthToken string = ''
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -102,6 +105,7 @@ module keyvault 'modules/keyvault.bicep' = {
     keyVaultName: sanitizedKeyVaultName
     tags: tags
     acsConnectionString: acs.outputs.acsConnectionString
+    twilioAuthToken: twilioAuthToken
   }
   dependsOn: [ appIdentity, acs ]
 }
@@ -133,6 +137,7 @@ module containerapp 'modules/containerapp.bicep' = {
     aiServicesEndpoint: aiServices.outputs.aiServicesEndpoint
     modelDeploymentName: modelName
     acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
+    twilioAuthTokenSecretUri: keyvault.outputs.twilioAuthTokenUri
     logAnalyticsWorkspaceName: logAnalyticsName
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }

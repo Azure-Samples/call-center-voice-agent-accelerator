@@ -4,6 +4,8 @@ import os
 
 from app.handler.acs_event_handler import AcsEventHandler
 from app.handler.acs_media_handler import ACSMediaHandler
+from app.handler.twilio_event_handler import TwilioEventHandler
+from app.handler.twilio_media_handler import TwilioMediaHandler
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
 
@@ -22,6 +24,7 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
 # Ambient Scenes Configuration
 # Options: none, office, call_center (or custom presets)
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
+app.config["TWILIO_AUTH_TOKEN"] = os.getenv("TWILIO_AUTH_TOKEN", "")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -36,6 +39,7 @@ else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 
 acs_handler = AcsEventHandler(app.config)
+twilio_handler = TwilioEventHandler(app.config)
 
 
 @app.route("/acs/incomingcall", methods=["POST"])
@@ -97,6 +101,50 @@ async def web_ws():
 async def index():
     """Serves the static index page."""
     return await app.send_static_file("index.html")
+
+
+@app.route("/voice", methods=["GET", "POST"])
+async def twilio_voice():
+    """Handles incoming Twilio phone calls with bidirectional media stream."""
+    logger.info("Twilio /voice webhook called")
+
+    signature = request.headers.get("X-Twilio-Signature", "")
+    params = dict(await request.form) if request.method == "POST" else {}
+    valid = twilio_handler.validate_request(request.url, params, signature)
+    if valid is None:
+        return "Service Unavailable", 503
+    if not valid:
+        return "Forbidden", 403
+
+    host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
+    ws_url = host_url.replace("https://", "wss://") + "/twilio/ws"
+    twiml = twilio_handler.generate_stream_twiml(ws_url)
+    return twiml, 200, {"Content-Type": "text/xml"}
+
+
+@app.websocket("/twilio/ws")
+async def twilio_ws():
+    """WebSocket endpoint for Twilio Media Streams to bridge to Voice Live."""
+    logger = logging.getLogger("twilio_ws")
+    logger.info("Incoming Twilio Media Stream WebSocket connection")
+
+    handler = TwilioMediaHandler(app.config)
+    handler.twilio_ws = websocket
+
+    if not await handler.authenticate_and_start():
+        return
+
+    await handler.connect_voicelive()
+    try:
+        while True:
+            msg = await websocket.receive()
+            await handler.handle_twilio_message(msg)
+    except asyncio.CancelledError:
+        logger.info("Twilio WebSocket cancelled")
+    except Exception:
+        logger.exception("Twilio WebSocket connection closed")
+    finally:
+        await handler._cleanup()
 
 
 if __name__ == "__main__":
