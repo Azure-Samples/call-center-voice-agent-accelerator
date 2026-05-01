@@ -8,6 +8,8 @@ The Azure voice live API is a solution enabling low-latency, high-quality speech
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
+As an alternative for telephony integration, the Twilio Media Streams API provides access to the raw audio from a Programmable Voice call by streaming it over WebSockets to a destination you specify. This enables use cases such as real-time transcriptions, sentiment analysis, voice authentication, and more. You can also stream raw audio into a Twilio Voice call from another application. Learn more about [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams).
+
 
 <div align="center">
   
@@ -31,7 +33,7 @@ The solution includes:
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
 
-  > **Telephony selection:** Only one telephony provider is active at a time. The server auto-detects based on which credentials are configured (e.g. `TWILIO_AUTH_TOKEN` present → Twilio, otherwise → ACS).
+  > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
 - Easy extension to other client types such as [Audiohook](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-use-audiohook)
@@ -237,8 +239,6 @@ Once your event subscription is configured and the phone number is active:
 ### 📞 Telephony with Twilio Client (Call Center Scenario)
 
 You can switch the telephony provider from ACS to **Twilio** by setting `TWILIO_AUTH_TOKEN`. When this token is configured, the server registers Twilio routes (`/voice` and `/twilio/ws`) instead of ACS routes. Inbound calls are handled via [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) — the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
-
-> To switch back to ACS, simply remove or unset `TWILIO_AUTH_TOKEN` and redeploy.
 
 **Prerequisites:**
 - A [Twilio account](https://www.twilio.com/try-twilio) with a phone number
