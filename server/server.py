@@ -2,10 +2,7 @@ import asyncio
 import logging
 import os
 
-from app.handler.acs_event_handler import AcsEventHandler
 from app.handler.acs_media_handler import ACSMediaHandler
-from app.handler.twilio_event_handler import TwilioEventHandler
-from app.handler.twilio_media_handler import TwilioMediaHandler
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
 
@@ -38,43 +35,14 @@ if ambient_preset and ambient_preset != "none":
 else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 
-acs_handler = AcsEventHandler(app.config)
-twilio_handler = TwilioEventHandler(app.config)
-
-
-@app.route("/acs/incomingcall", methods=["POST"])
-async def incoming_call_handler():
-    """Handles initial incoming call event from EventGrid."""
-    events = await request.get_json()
-    host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
-    return await acs_handler.process_incoming_call(events, host_url, app.config)
-
-
-@app.route("/acs/callbacks/<context_id>", methods=["POST"])
-async def acs_event_callbacks(context_id):
-    """Handles ACS event callbacks for call connection and streaming events."""
-    raw_events = await request.get_json()
-    return await acs_handler.process_callback_events(context_id, raw_events, app.config)
-
-
-@app.websocket("/acs/ws")
-async def acs_ws():
-    """WebSocket endpoint for ACS to send audio to Voice Live."""
-    logger = logging.getLogger("acs_ws")
-    logger.info("Incoming ACS WebSocket connection")
-    handler = ACSMediaHandler(app.config)
-    await handler.init_incoming_websocket(websocket, is_raw_audio=False)
-    asyncio.create_task(handler.connect())
-    try:
-        while True:
-            msg = await websocket.receive()
-            await handler.acs_to_voicelive(msg)
-    except asyncio.CancelledError:
-        logger.info("ACS WebSocket cancelled")
-    except Exception:
-        logger.exception("ACS WebSocket connection closed")
-    finally:
-        await handler.stop_audio_output()
+# Telephony client: auto-detected from configured credentials.
+# Each provider requires its own env var (e.g. TWILIO_AUTH_TOKEN for Twilio).
+# If none match, defaults to ACS.
+if app.config["TWILIO_AUTH_TOKEN"]:
+    _telephony_client = "twilio"
+else:
+    _telephony_client = "acs"
+logger.info("Telephony client: %s", _telephony_client)
 
 
 @app.websocket("/web/ws")
@@ -103,48 +71,92 @@ async def index():
     return await app.send_static_file("index.html")
 
 
-@app.route("/voice", methods=["GET", "POST"])
-async def twilio_voice():
-    """Handles incoming Twilio phone calls with bidirectional media stream."""
-    logger.info("Twilio /voice webhook called")
+# --- Telephony routes: register based on TELEPHONY_CLIENT ---
 
-    signature = request.headers.get("X-Twilio-Signature", "")
-    params = dict(await request.form) if request.method == "POST" else {}
-    valid = twilio_handler.validate_request(request.url, params, signature)
-    if valid is None:
-        return "Service Unavailable", 503
-    if not valid:
-        return "Forbidden", 403
+if _telephony_client == "twilio":
+    from app.handler.twilio_event_handler import TwilioEventHandler
+    from app.handler.twilio_media_handler import TwilioMediaHandler
 
-    host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
-    ws_url = host_url.replace("https://", "wss://") + "/twilio/ws"
-    twiml = twilio_handler.generate_stream_twiml(ws_url)
-    return twiml, 200, {"Content-Type": "text/xml"}
+    twilio_handler = TwilioEventHandler(app.config)
 
+    @app.route("/voice", methods=["GET", "POST"])
+    async def twilio_voice():
+        """Handles incoming Twilio phone calls with bidirectional media stream."""
+        logger.info("Twilio /voice webhook called")
 
-@app.websocket("/twilio/ws")
-async def twilio_ws():
-    """WebSocket endpoint for Twilio Media Streams to bridge to Voice Live."""
-    logger = logging.getLogger("twilio_ws")
-    logger.info("Incoming Twilio Media Stream WebSocket connection")
+        signature = request.headers.get("X-Twilio-Signature", "")
+        params = dict(await request.form) if request.method == "POST" else {}
+        valid = twilio_handler.validate_request(request.url, params, signature)
+        if valid is None:
+            return "Service Unavailable", 503
+        if not valid:
+            return "Forbidden", 403
 
-    handler = TwilioMediaHandler(app.config)
-    handler.twilio_ws = websocket
+        host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
+        ws_url = host_url.replace("https://", "wss://") + "/twilio/ws"
+        twiml = twilio_handler.generate_stream_twiml(ws_url)
+        return twiml, 200, {"Content-Type": "text/xml"}
 
-    if not await handler.authenticate_and_start():
-        return
+    @app.websocket("/twilio/ws")
+    async def twilio_ws():
+        """WebSocket endpoint for Twilio Media Streams to bridge to Voice Live."""
+        logger = logging.getLogger("twilio_ws")
+        logger.info("Incoming Twilio Media Stream WebSocket connection")
 
-    await handler.connect_voicelive()
-    try:
-        while True:
-            msg = await websocket.receive()
-            await handler.handle_twilio_message(msg)
-    except asyncio.CancelledError:
-        logger.info("Twilio WebSocket cancelled")
-    except Exception:
-        logger.exception("Twilio WebSocket connection closed")
-    finally:
-        await handler._cleanup()
+        handler = TwilioMediaHandler(app.config)
+        handler.twilio_ws = websocket
+
+        if not await handler.authenticate_and_start():
+            return
+
+        await handler.connect_voicelive()
+        try:
+            while True:
+                msg = await websocket.receive()
+                await handler.handle_twilio_message(msg)
+        except asyncio.CancelledError:
+            logger.info("Twilio WebSocket cancelled")
+        except Exception:
+            logger.exception("Twilio WebSocket connection closed")
+        finally:
+            await handler._cleanup()
+
+elif _telephony_client == "acs":
+    from app.handler.acs_event_handler import AcsEventHandler
+
+    acs_handler = AcsEventHandler(app.config)
+
+    @app.route("/acs/incomingcall", methods=["POST"])
+    async def incoming_call_handler():
+        """Handles initial incoming call event from EventGrid."""
+        events = await request.get_json()
+        host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
+        return await acs_handler.process_incoming_call(events, host_url, app.config)
+
+    @app.route("/acs/callbacks/<context_id>", methods=["POST"])
+    async def acs_event_callbacks(context_id):
+        """Handles ACS event callbacks for call connection and streaming events."""
+        raw_events = await request.get_json()
+        return await acs_handler.process_callback_events(context_id, raw_events, app.config)
+
+    @app.websocket("/acs/ws")
+    async def acs_ws():
+        """WebSocket endpoint for ACS to send audio to Voice Live."""
+        logger = logging.getLogger("acs_ws")
+        logger.info("Incoming ACS WebSocket connection")
+        handler = ACSMediaHandler(app.config)
+        await handler.init_incoming_websocket(websocket, is_raw_audio=False)
+        asyncio.create_task(handler.connect())
+        try:
+            while True:
+                msg = await websocket.receive()
+                await handler.acs_to_voicelive(msg)
+        except asyncio.CancelledError:
+            logger.info("ACS WebSocket cancelled")
+        except Exception:
+            logger.exception("ACS WebSocket connection closed")
+        finally:
+            await handler.stop_audio_output()
 
 
 if __name__ == "__main__":

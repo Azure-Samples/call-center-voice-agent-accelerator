@@ -2,7 +2,7 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator. It's a lightweight template to create speech-to-speech voice agents that deliver personalized self-service experiences and natural-sounding voices, seamlessly integrated with multiple telephony and client systems. This solution accelerator uses **Azure Voice Live API** and supports multiple client types — **Web browser**, **Azure Communication Services (ACS)**, and **Twilio** — so you can bring your own telephony provider. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)** and **Twilio**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
@@ -26,10 +26,12 @@ This sample demonstrates how to build a real-time voice agent using the [Azure S
 
 The solution includes:
 - A backend service that connects to the **Voice Live API** for real-time ASR, LLM and TTS
-- **Multiple client options:** Choose the telephony or client integration that fits your needs:
-  - **Web browser** — microphone/speaker via WebSocket (great for testing)
-  - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation
+- **Multiple client options:** The web browser client is always available. For telephony, choose **one** provider:
+  - **Web browser** — microphone/speaker via WebSocket (always available, great for testing)
+  - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
+
+  > **Telephony selection:** Only one telephony provider is active at a time. The server auto-detects based on which credentials are configured (e.g. `TWILIO_AUTH_TOKEN` present → Twilio, otherwise → ACS).
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
 - Easy extension to other client types such as [Audiohook](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-use-audiohook)
@@ -37,10 +39,8 @@ The solution includes:
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
 ### Architecture diagram
-|![Architecture Diagram](./docs/images/architecture_v0.0.2.png)|
+|![Architecture Diagram](./docs/images/architecture_v0.0.3.png)|
 |---|
-| Alternative client: Twilio Media Streams |
-|![Twilio Architecture Diagram](./docs/images/architecture_twilio_v0.0.1.png)|
 
 <br/>
 
@@ -181,7 +181,7 @@ To change the `azd` parameters from the default values, follow the steps [here](
 
 After deployment, you can verify that your Voice Agent is running correctly using either the Web Client (for quick testing) or the ACS Phone Client (for simulating a real-world call center scenario).
 
-🌐 Web Client (Test Mode)
+### 🌐 Web Client (Test Mode)
 
 Use this browser-based client to confirm your Container App is up and responding.
 
@@ -196,7 +196,7 @@ Use this browser-based client to confirm your Container App is up and responding
 
 
 
-📞 ACS Client (Call Center Scenario)
+### 📞 Telephony with ACS Client (Call Center Scenario)
 
 This simulates a real inbound phone call to your voice agent using **Azure Communication Services (ACS)**.
 
@@ -234,36 +234,11 @@ Once your event subscription is configured and the phone number is active:
 - Dial the ACS number.
 - Your call will connect to the real-time voice agent powered by Azure Voice Live.
 
+### 📞 Telephony with Twilio Client (Call Center Scenario)
 
-#### Local execution
+You can switch the telephony provider from ACS to **Twilio** by setting `TWILIO_AUTH_TOKEN`. When this token is configured, the server registers Twilio routes (`/voice` and `/twilio/ws`) instead of ACS routes. Inbound calls are handled via [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) — the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
 
-Once the environment has been deployed with `azd up` you can also run the application locally.
-
-Please follow the instructions in [the instructions in `service`](./service/README.md)
-
-<br/>
-
-## Use Voice Live with Foundry Agents
-
-The Voice Live API supports connecting to an existing **Azure AI Foundry Agent**, allowing you to leverage pre-built capabilities, knowledge bases, and orchestration features alongside real-time voice interactions.
-
-In the `session.update` configuration, you can set different properties such as the model, voice settings, turn detection, and agent connection. For detailed configuration options and step-by-step instructions, refer to the official documentation:
-
-👉 [Get started with Voice Live and Azure AI Foundry Agent Service](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-agents-quickstart?tabs=windows%2Ckeyless&pivots=ai-foundry-portal)
-
-After updating your configuration, deploy the changes to your Container App:
-
-```bash
-azd deploy
-```
-
-<br/>
-
-## Optional Features
-
-### 📞 Twilio Integration (PSTN via Twilio)
-
-In addition to the built-in ACS and web clients, you can connect inbound phone calls from **Twilio** to your voice agent using [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams). When a call arrives, the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
+> To switch back to ACS, simply remove or unset `TWILIO_AUTH_TOKEN` and redeploy.
 
 **Prerequisites:**
 - A [Twilio account](https://www.twilio.com/try-twilio) with a phone number
@@ -307,6 +282,33 @@ TWILIO_AUTH_TOKEN=your_auth_token_here
 > **Note:** `TWILIO_AUTH_TOKEN` is required for both local and deployed environments. Without it, incoming calls will be rejected.
 
 ---
+### Local execution
+
+Once the environment has been deployed with `azd up` you can also run the application locally.
+
+Please follow the instructions in [the instructions in `service`](./service/README.md)
+
+<br/>
+
+## Use Voice Live with Foundry Agents
+
+The Voice Live API supports connecting to an existing **Azure AI Foundry Agent**, allowing you to leverage pre-built capabilities, knowledge bases, and orchestration features alongside real-time voice interactions.
+
+In the `session.update` configuration, you can set different properties such as the model, voice settings, turn detection, and agent connection. For detailed configuration options and step-by-step instructions, refer to the official documentation:
+
+👉 [Get started with Voice Live and Azure AI Foundry Agent Service](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live-agents-quickstart?tabs=windows%2Ckeyless&pivots=ai-foundry-portal)
+
+After updating your configuration, deploy the changes to your Container App:
+
+```bash
+azd deploy
+```
+
+<br/>
+
+
+
+## Optional feature
 
 ### 🎧 Ambient Scenes
 

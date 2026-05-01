@@ -68,16 +68,18 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           identity: identityId
         }
       ]
-      secrets: concat([
-        {
-          name: 'acs-connection-string'
-          keyVaultUrl: acsConnectionStringSecretUri
-          identity: identityId
-        }
-      ], !empty(twilioAuthTokenSecretUri) ? [
-        {
-          name: 'twilio-auth-token'
-          keyVaultUrl: twilioAuthTokenSecretUri
+      secrets: concat(
+        !empty(acsConnectionStringSecretUri) ? [
+          {
+            name: 'acs-connection-string'
+            keyVaultUrl: acsConnectionStringSecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(twilioAuthTokenSecretUri) ? [
+          {
+            name: 'twilio-auth-token'
+            keyVaultUrl: twilioAuthTokenSecretUri
           identity: identityId
         }
       ] : [])
@@ -101,14 +103,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               value: modelDeploymentName
             }
             {
-              name: 'ACS_CONNECTION_STRING'
-              secretRef: 'acs-connection-string'
-            }
-            {
               name: 'DEBUG_MODE'
               value: 'true'
             }
-          ], !empty(twilioAuthTokenSecretUri) ? [
+          ], !empty(acsConnectionStringSecretUri) ? [
+            {
+              name: 'ACS_CONNECTION_STRING'
+              secretRef: 'acs-connection-string'
+            }
+          ] : [], !empty(twilioAuthTokenSecretUri) ? [
             {
               name: 'TWILIO_AUTH_TOKEN'
               secretRef: 'twilio-auth-token'

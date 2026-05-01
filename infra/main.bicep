@@ -25,6 +25,8 @@ param principalId string = ''
 @description('Twilio Auth Token for webhook signature validation')
 param twilioAuthToken string = ''
 
+var useTwilio = !empty(twilioAuthToken)
+
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
 var rgName = 'rg-${environmentName}-${uniqueSuffix}'
@@ -85,7 +87,7 @@ module aiServices 'modules/aiservices.bicep' = {
   dependsOn: [ appIdentity ]
 }
 
-module acs 'modules/acs.bicep' = {
+module acs 'modules/acs.bicep' = if (!useTwilio) {
   name: 'acs-deployment'
   scope: rg
   params: {
@@ -104,10 +106,11 @@ module keyvault 'modules/keyvault.bicep' = {
     location: location
     keyVaultName: sanitizedKeyVaultName
     tags: tags
-    acsConnectionString: acs.outputs.acsConnectionString
+    #disable-next-line BCP327
+    acsConnectionString: !useTwilio ? acs.outputs.acsConnectionString : ''
     twilioAuthToken: twilioAuthToken
   }
-  dependsOn: [ appIdentity, acs ]
+  dependsOn: [ appIdentity ]
 }
 
 // Add role assignments 
@@ -153,6 +156,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = ['${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
+output SERVICE_API_ENDPOINTS array = !useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall'] : ['https://${containerapp.outputs.containerAppFqdn}/voice']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName
