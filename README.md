@@ -2,7 +2,7 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator. It's a lightweight template to create speech-to-speech voice agents that deliver personalized self-service experiences and natural-sounding voices, seamlessly integrated with telephony systems. This solution accelerator uses  **Azure Voice Live API** and **Azure Communication Services** — Start locally, deploy later to Azure Web App. No PSTN number needed.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)** and **Twilio**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
@@ -26,7 +26,12 @@ This sample demonstrates how to build a real-time voice agent using the [Azure S
 
 The solution includes:
 - A backend service that connects to the **Voice Live API** for real-time ASR, LLM and TTS
-- Two client options: **Web browser** (microphone/speaker) and **Azure Communication Services (ACS)** phone calls
+- **Multiple client options:** The web browser client is always available. For telephony, choose **one** provider:
+  - **Web browser** — microphone/speaker via WebSocket (always available, great for testing)
+  - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
+  - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
+
+  > **Telephony selection:** Only one telephony provider is active at a time. The server auto-detects based on which credentials are configured (e.g. `TWILIO_AUTH_TOKEN` present → Twilio, otherwise → ACS).
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
 - Easy extension to other client types such as [Audiohook](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-use-audiohook)
@@ -34,7 +39,7 @@ The solution includes:
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
 ### Architecture diagram
-|![Architecture Diagram](./docs/images/architecture_v0.0.2.png)|
+|![Architecture Diagram](./docs/images/architecture_v0.0.3.png)|
 |---|
 
 <br/>
@@ -114,7 +119,7 @@ You can run this solution in VS Code Dev Containers, which will open the project
 <details>
   <summary><b>Deploy in your local environment</b></summary>
 
- ### Local environment
+ ### Local Environment
 
 If you're not using one of the above options for opening the project, then you'll need to:
 
@@ -176,7 +181,7 @@ To change the `azd` parameters from the default values, follow the steps [here](
 
 After deployment, you can verify that your Voice Agent is running correctly using either the Web Client (for quick testing) or the ACS Phone Client (for simulating a real-world call center scenario).
 
-🌐 Web Client (Test Mode)
+### 🌐 Web Client (Test Mode)
 
 Use this browser-based client to confirm your Container App is up and responding.
 
@@ -191,7 +196,7 @@ Use this browser-based client to confirm your Container App is up and responding
 
 
 
-📞 ACS Client (Call Center Scenario)
+### 📞 Telephony with ACS Client (Call Center Scenario)
 
 This simulates a real inbound phone call to your voice agent using **Azure Communication Services (ACS)**.
 
@@ -229,8 +234,55 @@ Once your event subscription is configured and the phone number is active:
 - Dial the ACS number.
 - Your call will connect to the real-time voice agent powered by Azure Voice Live.
 
+### 📞 Telephony with Twilio Client (Call Center Scenario)
 
-#### Local execution
+You can switch the telephony provider from ACS to **Twilio** by setting `TWILIO_AUTH_TOKEN`. When this token is configured, the server registers Twilio routes (`/voice` and `/twilio/ws`) instead of ACS routes. Inbound calls are handled via [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) — the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
+
+> To switch back to ACS, simply remove or unset `TWILIO_AUTH_TOKEN` and redeploy.
+
+**Prerequisites:**
+- A [Twilio account](https://www.twilio.com/try-twilio) with a phone number
+- Your **Twilio Auth Token** (found in the [Twilio Console](https://www.twilio.com/console))
+
+**Setup with `azd`:**
+
+```bash
+# Set your Twilio Auth Token before deploying
+azd env set TWILIO_AUTH_TOKEN <your-twilio-auth-token>
+
+# Then deploy:
+azd up
+# or redeploy:
+azd provision
+azd deploy
+```
+
+The token is stored securely in Azure Key Vault and injected into the Container App as a secret reference.
+
+**Configure Twilio Webhook:**
+
+1. In the [Twilio Console](https://console.twilio.com), go to your phone number's configuration.
+2. Under **PhoneNumber → A Call Comes In**, set:
+   - **Webhook URL:** `https://<your-container-app-url>/voice`
+   - **HTTP Method:** `POST`
+3. Save changes.
+
+**What happens when a call comes in:**
+1. Twilio sends a request to `/voice` — the server validates it and returns instructions (TwiML) to start a media stream
+2. Twilio opens a WebSocket to `/twilio/ws` — the server verifies the embedded token, then bridges the caller's audio to Azure Voice Live in real time
+3. The AI agent hears the caller, generates a response, and the audio is streamed back through the same connection
+
+**Local development:**
+
+For local testing, set `TWILIO_AUTH_TOKEN` in your `.env` file:
+```
+TWILIO_AUTH_TOKEN=your_auth_token_here
+```
+
+> **Note:** `TWILIO_AUTH_TOKEN` is required for both local and deployed environments. Without it, incoming calls will be rejected.
+
+---
+### Local Execution
 
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
