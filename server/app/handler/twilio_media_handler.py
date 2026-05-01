@@ -1,6 +1,5 @@
 """Handles Twilio Media Stream WebSocket and bridges audio to Azure Voice Live API."""
 
-import asyncio
 import audioop
 import base64
 import hashlib
@@ -8,10 +7,8 @@ import hmac
 import json
 import logging
 import time
-import uuid
 
-from azure.identity.aio import ManagedIdentityCredential
-from websockets.asyncio.client import connect as ws_connect
+from .voicelive_media_handler import VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 
@@ -21,39 +18,23 @@ VOICELIVE_SAMPLE_RATE = 24000
 _TOKEN_TTL = 60
 
 
-def _session_config():
-    """Returns the session configuration for Voice Live with semantic VAD."""
-    return {
-        "type": "session.update",
-        "session": {
-            "instructions": "You are a helpful AI assistant responding in natural, engaging language.",
-            "turn_detection": {
-                "type": "azure_semantic_vad",
-            },
-            "voice": {
-                "name": "en-US-Aria:DragonHDLatestNeural",
-                "type": "azure-standard",
-                "temperature": 0.8,
-            },
-        },
-    }
+class TwilioMediaHandler(VoiceLiveMediaHandler):
+    """Bridges Twilio Media Stream WebSocket to Azure Voice Live API.
 
-
-class TwilioMediaHandler:
-    """Manages bidirectional audio streaming between Twilio and Azure Voice Live API."""
+    Handles mulaw/PCM conversion, rate resampling, and Twilio protocol.
+    """
 
     def __init__(self, config):
-        self.endpoint = config["AZURE_VOICE_LIVE_ENDPOINT"]
-        self.model = config["VOICE_LIVE_MODEL"]
-        self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
-        self.client_id = config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"]
+        super().__init__(config)
         self.auth_token = config.get("TWILIO_AUTH_TOKEN", "")
-        self.ws = None
         self.twilio_ws = None
         self.stream_sid = None
-        self._receiver_task = None
         self._ratecv_state_in = None
         self._ratecv_state_out = None
+
+    # ------------------------------------------------------------------
+    # Authentication
+    # ------------------------------------------------------------------
 
     def _verify_ws_token(self, token: str) -> bool:
         """Verify a WebSocket token is valid and not expired."""
@@ -104,37 +85,48 @@ class TwilioMediaHandler:
             await self.twilio_ws.close(4400, "Bad Request")
             return False
 
-    async def connect_voicelive(self):
-        """Connects to Azure Voice Live via raw WebSocket."""
-        endpoint = self.endpoint.rstrip("/")
-        model = self.model.strip()
-        url = f"{endpoint}/voice-live/realtime?api-version=2026-01-01-preview&model={model}"
-        url = url.replace("https://", "wss://")
+    # ------------------------------------------------------------------
+    # Voice Live hooks
+    # ------------------------------------------------------------------
 
-        headers = {"x-ms-client-request-id": str(uuid.uuid4())}
+    async def on_speech_started(self):
+        """Barge-in: clear Twilio playback and TTS buffer."""
+        await self._send_clear_to_twilio()
+        if self._ambient_mixer is not None:
+            async with self._tts_buffer_lock:
+                self._tts_output_buffer.clear()
+                self._tts_playback_started = False
 
-        if self.client_id:
-            async with ManagedIdentityCredential(client_id=self.client_id) as credential:
-                token = await credential.get_token(
-                    "https://cognitiveservices.azure.com/.default"
-                )
-                headers["Authorization"] = f"Bearer {token.token}"
-        else:
-            headers["api-key"] = self.api_key
+    async def on_transcript_done(self, transcript: str):
+        """Log only — Twilio has no transcript channel."""
+        pass
 
-        self.ws = await ws_connect(url, additional_headers=headers)
-        logger.info("[TwilioMediaHandler] Connected to Voice Live API")
+    # ------------------------------------------------------------------
+    # Audio output to client — PCM 24kHz → mulaw 8kHz → Twilio
+    # ------------------------------------------------------------------
 
-        await self._send_json(_session_config())
-        await self._send_json({"type": "response.create"})
+    async def _send_audio_to_client(self, audio_bytes: bytes):
+        """Convert PCM 24kHz to mulaw 8kHz and send to Twilio."""
+        if not self.twilio_ws or not self.stream_sid:
+            return
 
-        # Start receiver loop
-        self._receiver_task = asyncio.create_task(self._voicelive_receiver_loop())
+        pcm_8k, self._ratecv_state_out = audioop.ratecv(
+            audio_bytes, 2, 1, VOICELIVE_SAMPLE_RATE, TWILIO_SAMPLE_RATE, self._ratecv_state_out
+        )
 
-    async def _send_json(self, obj):
-        """Sends a JSON object to Voice Live WebSocket."""
-        if self.ws:
-            await self.ws.send(json.dumps(obj))
+        mulaw_bytes = audioop.lin2ulaw(pcm_8k, 2)
+        mulaw_b64 = base64.b64encode(mulaw_bytes).decode("ascii")
+
+        msg = {
+            "event": "media",
+            "streamSid": self.stream_sid,
+            "media": {"payload": mulaw_b64},
+        }
+        await self.twilio_ws.send(json.dumps(msg))
+
+    # ------------------------------------------------------------------
+    # Twilio message handling
+    # ------------------------------------------------------------------
 
     async def handle_twilio_message(self, message: str):
         """Processes an incoming Twilio WebSocket message."""
@@ -164,11 +156,11 @@ class TwilioMediaHandler:
                 media = data.get("media", {})
                 payload = media.get("payload", "")
                 if payload:
-                    await self._twilio_audio_to_voicelive(payload)
+                    mulaw_bytes = base64.b64decode(payload)
+                    await self.handle_audio(mulaw_bytes)
 
             case "stop":
                 logger.info("[TwilioMediaHandler] Stream stopped: sid=%s", self.stream_sid)
-                await self._cleanup()
 
             case "dtmf":
                 digit = data.get("dtmf", {}).get("digit")
@@ -181,52 +173,17 @@ class TwilioMediaHandler:
             case _:
                 logger.debug("[TwilioMediaHandler] Unknown event: %s", event)
 
-    async def _twilio_audio_to_voicelive(self, mulaw_b64: str):
-        """Converts Twilio mulaw/8000 audio to PCM/24000 and sends to Voice Live."""
-        if not self.ws:
-            return
+    # ------------------------------------------------------------------
+    # Inbound audio — mulaw 8kHz → PCM 24kHz
+    # ------------------------------------------------------------------
 
-        # Decode base64 mulaw
-        mulaw_bytes = base64.b64decode(mulaw_b64)
-
-        # Convert mulaw to PCM 16-bit
-        pcm_8k = audioop.ulaw2lin(mulaw_bytes, 2)
-
-        # Resample 8kHz -> 24kHz
+    def _receive_audio_from_client(self, data) -> tuple:
+        """Convert Twilio mulaw/8kHz bytes to PCM 24kHz."""
+        pcm_8k = audioop.ulaw2lin(data, 2)
         pcm_24k, self._ratecv_state_in = audioop.ratecv(
             pcm_8k, 2, 1, TWILIO_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, self._ratecv_state_in
         )
-
-        # Send PCM bytes as base64 to Voice Live
-        pcm_b64 = base64.b64encode(pcm_24k).decode("ascii")
-        await self._send_json({"type": "input_audio_buffer.append", "audio": pcm_b64})
-
-    async def _voicelive_audio_to_twilio(self, audio_b64: str):
-        """Converts Voice Live PCM/24000 audio to mulaw/8000 and sends to Twilio."""
-        if not self.twilio_ws or not self.stream_sid:
-            return
-
-        # Decode PCM audio from Voice Live
-        pcm_24k = base64.b64decode(audio_b64)
-
-        # Resample 24kHz -> 8kHz
-        pcm_8k, self._ratecv_state_out = audioop.ratecv(
-            pcm_24k, 2, 1, VOICELIVE_SAMPLE_RATE, TWILIO_SAMPLE_RATE, self._ratecv_state_out
-        )
-
-        # Convert PCM to mulaw
-        mulaw_bytes = audioop.lin2ulaw(pcm_8k, 2)
-
-        # Encode to base64 for Twilio
-        mulaw_b64 = base64.b64encode(mulaw_bytes).decode("ascii")
-
-        # Send media message back to Twilio
-        msg = {
-            "event": "media",
-            "streamSid": self.stream_sid,
-            "media": {"payload": mulaw_b64},
-        }
-        await self.twilio_ws.send(json.dumps(msg))
+        return pcm_24k, len(pcm_24k)
 
     async def _send_clear_to_twilio(self):
         """Sends a clear message to Twilio to stop current audio playback."""
@@ -235,60 +192,3 @@ class TwilioMediaHandler:
         self._ratecv_state_out = None
         msg = {"event": "clear", "streamSid": self.stream_sid}
         await self.twilio_ws.send(json.dumps(msg))
-
-    async def _voicelive_receiver_loop(self):
-        """Handles incoming events from Voice Live and sends audio back to Twilio."""
-        try:
-            async for raw_msg in self.ws:
-                try:
-                    msg = json.loads(raw_msg)
-                except json.JSONDecodeError:
-                    continue
-
-                msg_type = msg.get("type", "")
-
-                match msg_type:
-                    case "session.updated":
-                        logger.info("[TwilioMediaHandler] Session updated")
-
-                    case "input_audio_buffer.speech_started":
-                        logger.info("[TwilioMediaHandler] Speech started")
-                        await self._send_clear_to_twilio()
-
-                    case "input_audio_buffer.speech_stopped":
-                        logger.info("[TwilioMediaHandler] Speech stopped")
-
-                    case "response.audio.delta":
-                        delta = msg.get("delta", "")
-                        if delta:
-                            await self._voicelive_audio_to_twilio(delta)
-
-                    case "response.done":
-                        logger.info("[TwilioMediaHandler] Response done")
-
-                    case "error":
-                        logger.error("[TwilioMediaHandler] Voice Live error: %s", msg.get("error"))
-
-                    case _:
-                        logger.debug("[TwilioMediaHandler] Event: %s", msg_type)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.exception("[TwilioMediaHandler] Receiver loop error")
-
-    async def _cleanup(self):
-        """Cleans up resources."""
-        if self._receiver_task:
-            self._receiver_task.cancel()
-            try:
-                await self._receiver_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            self._receiver_task = None
-        if self.ws:
-            try:
-                await self.ws.close()
-            except Exception:
-                pass
-            self.ws = None
-        logger.info("[TwilioMediaHandler] Cleaned up")

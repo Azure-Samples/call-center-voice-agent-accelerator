@@ -2,11 +2,16 @@ import asyncio
 import logging
 import os
 
-from app.handler.acs_media_handler import ACSMediaHandler
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
 
+from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
+
 load_dotenv()
+
+# ---------------------------------------------------------------------------
+# App configuration
+# ---------------------------------------------------------------------------
 
 app = Quart(__name__)
 app.config["AZURE_VOICE_LIVE_API_KEY"] = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
@@ -17,9 +22,6 @@ app.config["ACS_DEV_TUNNEL"] = os.getenv("ACS_DEV_TUNNEL", "")
 app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
-
-# Ambient Scenes Configuration
-# Options: none, office, call_center (or custom presets)
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 app.config["TWILIO_AUTH_TOKEN"] = os.getenv("TWILIO_AUTH_TOKEN", "")
 
@@ -35,14 +37,19 @@ if ambient_preset and ambient_preset != "none":
 else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 
-# Telephony client: auto-detected from configured credentials.
-# Each provider requires its own env var (e.g. TWILIO_AUTH_TOKEN for Twilio).
-# If none match, defaults to ACS.
+# ---------------------------------------------------------------------------
+# Telephony detection (exclusive: Twilio OR ACS, never both)
+# ---------------------------------------------------------------------------
+
 if app.config["TWILIO_AUTH_TOKEN"]:
     _telephony_client = "twilio"
 else:
     _telephony_client = "acs"
 logger.info("Telephony client: %s", _telephony_client)
+
+# ---------------------------------------------------------------------------
+# Routes: Web client (always available)
+# ---------------------------------------------------------------------------
 
 
 @app.websocket("/web/ws")
@@ -50,13 +57,13 @@ async def web_ws():
     """WebSocket endpoint for web clients to send audio to Voice Live."""
     logger = logging.getLogger("web_ws")
     logger.info("Incoming Web WebSocket connection")
-    handler = ACSMediaHandler(app.config)
-    await handler.init_incoming_websocket(websocket, is_raw_audio=True)
-    asyncio.create_task(handler.connect())
+    handler = VoiceLiveMediaHandler(app.config)
+    await handler.init_websocket(websocket)
+    asyncio.create_task(handler.connect_voicelive())
     try:
         while True:
             msg = await websocket.receive()
-            await handler.web_to_voicelive(msg)
+            await handler.handle_audio(msg)
     except asyncio.CancelledError:
         logger.info("Web WebSocket cancelled")
     except Exception:
@@ -71,7 +78,9 @@ async def index():
     return await app.send_static_file("index.html")
 
 
-# --- Telephony routes: register based on TELEPHONY_CLIENT ---
+# ---------------------------------------------------------------------------
+# Routes: Telephony (only one provider is registered)
+# ---------------------------------------------------------------------------
 
 if _telephony_client == "twilio":
     from app.handler.twilio_event_handler import TwilioEventHandler
@@ -123,6 +132,7 @@ if _telephony_client == "twilio":
 
 elif _telephony_client == "acs":
     from app.handler.acs_event_handler import AcsEventHandler
+    from app.handler.acs_media_handler import ACSMediaHandler
 
     acs_handler = AcsEventHandler(app.config)
 
@@ -145,12 +155,12 @@ elif _telephony_client == "acs":
         logger = logging.getLogger("acs_ws")
         logger.info("Incoming ACS WebSocket connection")
         handler = ACSMediaHandler(app.config)
-        await handler.init_incoming_websocket(websocket, is_raw_audio=False)
-        asyncio.create_task(handler.connect())
+        await handler.init_websocket(websocket)
+        asyncio.create_task(handler.connect_voicelive())
         try:
             while True:
                 msg = await websocket.receive()
-                await handler.acs_to_voicelive(msg)
+                await handler.handle_audio(msg)
         except asyncio.CancelledError:
             logger.info("ACS WebSocket cancelled")
         except Exception:
