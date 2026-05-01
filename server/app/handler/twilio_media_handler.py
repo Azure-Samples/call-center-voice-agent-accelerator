@@ -52,6 +52,8 @@ class TwilioMediaHandler:
         self.twilio_ws = None
         self.stream_sid = None
         self._receiver_task = None
+        self._ratecv_state_in = None
+        self._ratecv_state_out = None
 
     def _verify_ws_token(self, token: str) -> bool:
         """Verify a WebSocket token is valid and not expired."""
@@ -191,7 +193,9 @@ class TwilioMediaHandler:
         pcm_8k = audioop.ulaw2lin(mulaw_bytes, 2)
 
         # Resample 8kHz -> 24kHz
-        pcm_24k, _ = audioop.ratecv(pcm_8k, 2, 1, TWILIO_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, None)
+        pcm_24k, self._ratecv_state_in = audioop.ratecv(
+            pcm_8k, 2, 1, TWILIO_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, self._ratecv_state_in
+        )
 
         # Send PCM bytes as base64 to Voice Live
         pcm_b64 = base64.b64encode(pcm_24k).decode("ascii")
@@ -206,7 +210,9 @@ class TwilioMediaHandler:
         pcm_24k = base64.b64decode(audio_b64)
 
         # Resample 24kHz -> 8kHz
-        pcm_8k, _ = audioop.ratecv(pcm_24k, 2, 1, VOICELIVE_SAMPLE_RATE, TWILIO_SAMPLE_RATE, None)
+        pcm_8k, self._ratecv_state_out = audioop.ratecv(
+            pcm_24k, 2, 1, VOICELIVE_SAMPLE_RATE, TWILIO_SAMPLE_RATE, self._ratecv_state_out
+        )
 
         # Convert PCM to mulaw
         mulaw_bytes = audioop.lin2ulaw(pcm_8k, 2)
@@ -226,6 +232,7 @@ class TwilioMediaHandler:
         """Sends a clear message to Twilio to stop current audio playback."""
         if not self.twilio_ws or not self.stream_sid:
             return
+        self._ratecv_state_out = None
         msg = {"event": "clear", "streamSid": self.stream_sid}
         await self.twilio_ws.send(json.dumps(msg))
 

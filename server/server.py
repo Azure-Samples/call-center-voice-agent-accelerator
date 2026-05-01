@@ -109,8 +109,8 @@ if _telephony_client == "twilio":
         if not await handler.authenticate_and_start():
             return
 
-        await handler.connect_voicelive()
         try:
+            await handler.connect_voicelive()
             while True:
                 msg = await websocket.receive()
                 await handler.handle_twilio_message(msg)

@@ -306,9 +306,7 @@ azd deploy
 
 <br/>
 
-
-
-## Optional feature
+## Optional features
 
 ### 🎧 Ambient Scenes
 
