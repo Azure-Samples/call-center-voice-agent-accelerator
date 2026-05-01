@@ -119,7 +119,7 @@ You can run this solution in VS Code Dev Containers, which will open the project
 <details>
   <summary><b>Deploy in your local environment</b></summary>
 
- ### Local environment
+ ### Local Environment
 
 If you're not using one of the above options for opening the project, then you'll need to:
 
@@ -282,7 +282,7 @@ TWILIO_AUTH_TOKEN=your_auth_token_here
 > **Note:** `TWILIO_AUTH_TOKEN` is required for both local and deployed environments. Without it, incoming calls will be rejected.
 
 ---
-### Local execution
+### Local Execution
 
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
@@ -306,7 +306,7 @@ azd deploy
 
 <br/>
 
-## Optional features
+## Optional Features
 
 ### 🎧 Ambient Scenes
 

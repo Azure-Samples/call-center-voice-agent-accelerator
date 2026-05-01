@@ -280,7 +280,15 @@ class TwilioMediaHandler:
         """Cleans up resources."""
         if self._receiver_task:
             self._receiver_task.cancel()
+            try:
+                await self._receiver_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._receiver_task = None
         if self.ws:
-            await self.ws.close()
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
             self.ws = None
         logger.info("[TwilioMediaHandler] Cleaned up")

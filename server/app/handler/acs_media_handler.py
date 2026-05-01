@@ -60,6 +60,7 @@ class ACSMediaHandler:
         self.send_queue = asyncio.Queue()
         self.ws = None
         self.send_task = None
+        self._receiver_task = None
         self.incoming_websocket = None
         self.is_raw_audio = True
 
@@ -109,7 +110,7 @@ class ACSMediaHandler:
         await self._send_json(session_config())
         await self._send_json({"type": "response.create"})
 
-        asyncio.create_task(self._receiver_loop())
+        self._receiver_task = asyncio.create_task(self._receiver_loop())
         self.send_task = asyncio.create_task(self._sender_loop())
 
     async def init_incoming_websocket(self, socket, is_raw_audio=True):
@@ -252,6 +253,25 @@ class ACSMediaHandler:
             async with self._tts_buffer_lock:
                 self._tts_output_buffer.clear()
                 self._tts_playback_started = False
+
+    async def _cleanup(self):
+        """Cleans up background tasks and closes the Voice Live WebSocket."""
+        for task in (self._receiver_task, self.send_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except (asyncio.CancelledError, Exception):
+                    pass
+        self._receiver_task = None
+        self.send_task = None
+        if self.ws:
+            try:
+                await self.ws.close()
+            except Exception:
+                pass
+            self.ws = None
+        logger.info("[VoiceLiveACSHandler] Cleaned up")
 
     async def _send_continuous_audio(self, chunk_size: int) -> None:
         """
