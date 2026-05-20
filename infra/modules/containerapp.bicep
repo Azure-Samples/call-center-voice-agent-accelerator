@@ -10,6 +10,8 @@ param aiServicesEndpoint string
 param modelDeploymentName string
 param acsConnectionStringSecretUri string
 param twilioAuthTokenSecretUri string = ''
+param infobipApiKeySecretUri string = ''
+param infobipApiBaseUrl string = ''
 param logAnalyticsWorkspaceName string
 @description('The name of the container image')
 param imageName string = ''
@@ -82,7 +84,14 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: twilioAuthTokenSecretUri
           identity: identityId
         }
-      ] : [])
+      ] : [],
+        !empty(infobipApiKeySecretUri) ? [
+          {
+            name: 'infobip-api-key'
+            keyVaultUrl: infobipApiKeySecretUri
+            identity: identityId
+          }
+        ] : [])
     }
     template: {
       containers: [
@@ -115,6 +124,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'TWILIO_AUTH_TOKEN'
               secretRef: 'twilio-auth-token'
+            }
+          ] : [], !empty(infobipApiKeySecretUri) ? [
+            {
+              name: 'INFOBIP_API_KEY'
+              secretRef: 'infobip-api-key'
+            }
+            {
+              name: 'INFOBIP_API_BASE_URL'
+              value: infobipApiBaseUrl
             }
           ] : [])
           resources: {

@@ -24,8 +24,14 @@ param principalId string = ''
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
 param twilioAuthToken string = ''
+@secure()
+@description('Infobip API Key for voice call handling')
+param infobipApiKey string = ''
+@description('Infobip API Base URL (e.g. https://xxxxx.api.infobip.com)')
+param infobipApiBaseUrl string = ''
 
 var useTwilio = !empty(twilioAuthToken)
+var useInfobip = !empty(infobipApiKey)
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -87,7 +93,7 @@ module aiServices 'modules/aiservices.bicep' = {
   dependsOn: [ appIdentity ]
 }
 
-module acs 'modules/acs.bicep' = if (!useTwilio) {
+module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip) {
   name: 'acs-deployment'
   scope: rg
   params: {
@@ -107,8 +113,9 @@ module keyvault 'modules/keyvault.bicep' = {
     keyVaultName: sanitizedKeyVaultName
     tags: tags
     #disable-next-line BCP327
-    acsConnectionString: !useTwilio ? acs.outputs.acsConnectionString : ''
+    acsConnectionString: (!useTwilio && !useInfobip) ? acs.outputs.acsConnectionString : ''
     twilioAuthToken: twilioAuthToken
+    infobipApiKey: infobipApiKey
   }
   dependsOn: [ appIdentity ]
 }
@@ -141,6 +148,8 @@ module containerapp 'modules/containerapp.bicep' = {
     modelDeploymentName: modelName
     acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
     twilioAuthTokenSecretUri: keyvault.outputs.twilioAuthTokenUri
+    infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
+    infobipApiBaseUrl: infobipApiBaseUrl
     logAnalyticsWorkspaceName: logAnalyticsName
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }
@@ -156,6 +165,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = !useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall'] : ['https://${containerapp.outputs.containerAppFqdn}/voice']
+output SERVICE_API_ENDPOINTS array = useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/voice'] : useInfobip ? ['https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'] : ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName

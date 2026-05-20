@@ -69,6 +69,7 @@ class VoiceLiveMediaHandler:
         return {
             "type": "session.update",
             "session": {
+                "modalities": ["text", "audio"],
                 "instructions": "You are a helpful AI assistant responding in natural, engaging language.",
                 "turn_detection": {
                     "type": "azure_semantic_vad",

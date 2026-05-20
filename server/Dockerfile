@@ -1,10 +1,13 @@
 ###############################################
 # Base stage (shared between build and final) #
 ###############################################
-FROM python:3.12-slim-bookworm AS base
+FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm AS base
 
-# Patch system pip so Defender sees the fixed version
-RUN pip install --no-cache-dir --upgrade pip==25.3
+# Patch system packages (fixes CVE-2025-1390 libcap2)
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
+# Patch system pip so Defender sees the fixed version (fixes CVE-2026-6357)
+RUN pip install --no-cache-dir --upgrade pip>=26.1
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \

@@ -2,13 +2,15 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)** and **Twilio**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, and **Infobip**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
 As an alternative for telephony integration, the Twilio Media Streams API provides access to the raw audio from a Programmable Voice call by streaming it over WebSockets to a destination you specify. This enables use cases such as real-time transcriptions, sentiment analysis, voice authentication, and more. You can also stream raw audio into a Twilio Voice call from another application. Learn more about [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams).
+
+The Infobip Calls API provides programmable voice capabilities with WebSocket-based audio streaming. It supports inbound and outbound calls with real-time media bridging via the Dialog API, allowing you to connect callers directly to your AI voice agent. Learn more about [Infobip Voice Calls](https://www.infobip.com/docs/voice-and-video/calls).
 
 
 <div align="center">
@@ -32,6 +34,7 @@ The solution includes:
   - **Web browser** — microphone/speaker via WebSocket (always available, great for testing)
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
+  - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
@@ -41,7 +44,7 @@ The solution includes:
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
 ### Architecture diagram
-|![Architecture Diagram](./docs/images/architecture_v0.0.3.png)|
+|![Architecture Diagram](./docs/images/architecture_v0.0.4.png)|
 |---|
 
 <br/>
@@ -280,6 +283,54 @@ TWILIO_AUTH_TOKEN=your_auth_token_here
 ```
 
 > **Note:** `TWILIO_AUTH_TOKEN` is required for both local and deployed environments. Without it, incoming calls will be rejected.
+
+### 📞 Telephony with Infobip Client (Call Center Scenario)
+
+You can use **Infobip** as the telephony provider by setting `INFOBIP_API_KEY`. When configured, the server registers Infobip routes (`/infobip/incoming` and `/infobip/ws`). Inbound calls are handled via the [Infobip Calls API](https://www.infobip.com/docs/api/channels/voice/calls) — the server answers the call, plays a greeting, then bridges the caller's audio to Azure Voice Live via a WebSocket connection.
+
+**Prerequisites:**
+- An [Infobip account](https://www.infobip.com/signup) with Voice capabilities enabled
+- A phone number purchased in the [Infobip Portal](https://portal.infobip.com)
+
+**Setup with `azd`:**
+
+```bash
+# Set your Infobip account credentials
+azd env set INFOBIP_API_KEY <your-infobip-api-key>
+azd env set INFOBIP_API_BASE_URL <your-infobip-base-url>
+
+# Deploy
+azd up
+```
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `INFOBIP_API_KEY` | Your Infobip API key | Infobip Portal → Homepage → API Key |
+| `INFOBIP_API_BASE_URL` | Your account's API base URL (e.g. `https://xxxxx.api.infobip.com`) | Infobip Portal → Homepage → Base URL |
+
+After deployment completes, copy your **Container App URL** from the output (e.g. `https://xxx.azurecontainerapps.io`).
+
+The API key is stored securely in Azure Key Vault and injected into the Container App as a secret reference.
+
+**Configure Infobip Portal (requires your Container App URL):**
+
+1. In the [Infobip Portal](https://portal.infobip.com), go to **Channels and Numbers → VOICE AND WEBRTC**.
+2. Under **Calls API → Calls Configuration**, set the **Webhook URL** to:
+   ```
+   https://<your-container-app-url>/infobip/incoming
+   ```
+3. Under **Calls API → Media streaming**, create a new configuration with:
+   - **URL:** `wss://<your-container-app-url>/infobip/ws`
+   - **Audio format:** `audio/l16;rate=24000` (PCM 16-bit, 24kHz)
+4. Assign your Infobip phone number to this Calls Configuration.
+
+> No redeploy needed after portal configuration. The server automatically discovers the media streaming configuration by matching the WebSocket URL on the first incoming call.
+
+**What happens when a call comes in:**
+1. Infobip sends a `CALL_RECEIVED` webhook to `/infobip/incoming` — the server answers the call
+2. A TTS greeting ("Please wait while we connect you...") is played to the caller
+3. The server creates a Dialog that bridges the caller to the WebSocket endpoint
+4. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
 
 ---
 ### Local Execution
