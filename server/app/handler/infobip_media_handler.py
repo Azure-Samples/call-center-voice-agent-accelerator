@@ -28,8 +28,6 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
     def __init__(self, config, token_validator=None):
         super().__init__(config)
         self.infobip_ws = None
-        self.call_id = None
-        self._connected = False
         self._authenticated = False
         self._token_validator = token_validator  # callable: validate_ws_token(token) -> bool
         self._out_frame_count = 0
@@ -137,7 +135,6 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
                 return
             logger.info("[InfobipMediaHandler] WebSocket token validated successfully")
 
-        self._connected = True
         self._authenticated = True
 
         # Verify sample rate from content-type: "audio/l16;rate=24000"
@@ -158,11 +155,3 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
             return
 
         logger.info("[InfobipMediaHandler] Audio format confirmed: PCM 24kHz 16-bit mono")
-
-    # ------------------------------------------------------------------
-    # Inbound audio — direct passthrough to Voice Live
-    # ------------------------------------------------------------------
-
-    def _receive_audio_from_client(self, data) -> tuple:
-        """No conversion needed — Infobip sends PCM 24kHz 16-bit mono directly."""
-        return data, len(data)
