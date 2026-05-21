@@ -1,15 +1,11 @@
-"""Handler for Infobip voice webhook validation and incoming call processing.
+"""Handler for Infobip voice webhook events and call lifecycle.
 
 Infobip Calls API flow:
-1. Receive CALL_RECEIVED webhook notification
-2. Answer the call via POST /calls/1/calls/{callId}/answer
-3. Wait for CALL_ESTABLISHED event
-4. Play TTS greeting via POST /calls/1/calls/{callId}/say
-5. Wait for SAY_FINISHED event
-6. Create Dialog via POST /calls/1/dialogs (bridges caller to WebSocket endpoint)
+1. Receive CALL_RECEIVED webhook → answer the call
+2. Receive CALL_ESTABLISHED webhook → create Dialog (bridges caller to WebSocket endpoint)
+3. Voice Live AI handles the conversation over the WebSocket
 """
 
-import hmac
 import logging
 import secrets
 
@@ -20,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class InfobipEventHandler:
-    """Validates Infobip webhook requests and manages call lifecycle via API."""
+    """Handles Infobip webhook events and manages call lifecycle via API."""
 
     def __init__(self, config):
         self.api_key = config.get("INFOBIP_API_KEY", "")
@@ -91,24 +87,6 @@ class InfobipEventHandler:
             "Accept": "application/json",
         }
 
-    def validate_request(self, headers: dict) -> bool:
-        """Validate an Infobip webhook request using the Authorization header.
-
-        Returns True if valid, False if invalid, None if API key not configured.
-        Infobip may not send auth headers on webhooks depending on configuration.
-        """
-        if not self.api_key:
-            return None
-
-        auth_header = headers.get("Authorization", "")
-        if not auth_header:
-            # Infobip doesn't always send auth on webhooks.
-            # The WebSocket endpoint is secured separately via customData token.
-            return True
-
-        expected = f"App {self.api_key}"
-        return hmac.compare_digest(auth_header, expected)
-
     async def _answer_call(self, call_id: str) -> bool:
         """Answer an incoming call via Infobip API."""
         url = f"{self.api_base_url}/calls/1/calls/{call_id}/answer"
@@ -123,29 +101,6 @@ class InfobipEventHandler:
                     body = await resp.text()
                     logger.error(
                         "[InfobipEventHandler] Failed to answer call: status=%s, body=%s",
-                        resp.status, body,
-                    )
-                    return False
-
-    async def _say_text(self, call_id: str, text: str, api_base: str = None) -> bool:
-        """Play TTS text to the caller via Infobip Say API."""
-        base = api_base or self.api_base_url
-        url = f"{base}/calls/1/calls/{call_id}/say"
-        payload = {
-            "text": text,
-            "language": "en",
-        }
-        logger.info("[InfobipEventHandler] Saying text: callId=%s, text=%s", call_id, text)
-
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self._headers(), json=payload) as resp:
-                if resp.status in (200, 201):
-                    logger.info("[InfobipEventHandler] Say started: callId=%s", call_id)
-                    return True
-                else:
-                    body = await resp.text()
-                    logger.error(
-                        "[InfobipEventHandler] Failed to say text: status=%s, body=%s",
                         resp.status, body,
                     )
                     return False
@@ -212,8 +167,6 @@ class InfobipEventHandler:
             return await self._handle_call_received(call_id, request_data, host_url)
         elif event_type == "CALL_ESTABLISHED":
             return await self._handle_call_established(call_id, request_data)
-        elif event_type == "SAY_FINISHED":
-            return await self._handle_say_finished(call_id, request_data)
         elif event_type in ("CALL_FINISHED", "CALL_FAILED"):
             return await self._handle_call_ended(call_id, request_data)
         else:
@@ -254,38 +207,16 @@ class InfobipEventHandler:
         return Response(status=200)
 
     async def _handle_call_established(self, call_id: str, request_data: dict) -> Response:
-        """Handle CALL_ESTABLISHED: play greeting, then wait for SAY_FINISHED to start media stream."""
+        """Handle CALL_ESTABLISHED: create dialog to bridge caller to WebSocket."""
         logger.info(
             "[InfobipEventHandler] Call established: callId=%s", call_id,
         )
-        pending = self._pending_media_streams.get(call_id)
-        if pending:
-            api_base = pending["api_base"]
-            said = await self._say_text(
-                call_id,
-                "Please wait while we connect you to our AI assistant.",
-                api_base,
-            )
-            if not said:
-                # Fall back to creating dialog directly
-                logger.warning("[InfobipEventHandler] Say failed, creating dialog directly")
-                self._pending_media_streams.pop(call_id, None)
-                await self._create_dialog(call_id, api_base)
-        else:
-            logger.warning("[InfobipEventHandler] No pending media stream for callId=%s", call_id)
-        return Response(status=200)
-
-    async def _handle_say_finished(self, call_id: str, request_data: dict) -> Response:
-        """Handle SAY_FINISHED: now create the dialog to bridge to WebSocket."""
-        logger.info("[InfobipEventHandler] Say finished: callId=%s", call_id)
         pending = self._pending_media_streams.pop(call_id, None)
         if pending:
             api_base = pending["api_base"]
-            created = await self._create_dialog(call_id, api_base)
-            if not created:
-                logger.warning("[InfobipEventHandler] Dialog creation failed after SAY_FINISHED")
+            await self._create_dialog(call_id, api_base)
         else:
-            logger.warning("[InfobipEventHandler] No pending info for SAY_FINISHED callId=%s", call_id)
+            logger.warning("[InfobipEventHandler] No pending media stream for callId=%s", call_id)
         return Response(status=200)
 
     async def _handle_call_ended(self, call_id: str, request_data: dict) -> Response:

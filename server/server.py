@@ -145,11 +145,8 @@ elif _telephony_client == "infobip":
         """Handles incoming Infobip voice call webhooks."""
         logger.info("Infobip /infobip/incoming webhook called")
 
-        valid = infobip_handler.validate_request(dict(request.headers))
-        if valid is None:
+        if not infobip_handler.api_key:
             return "Service Unavailable", 503
-        if not valid:
-            return "Forbidden", 403
 
         request_data = await request.get_json()
         host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
@@ -164,16 +161,28 @@ elif _telephony_client == "infobip":
         handler = InfobipMediaHandler(app.config, token_validator=infobip_handler.validate_ws_token)
         handler.infobip_ws = websocket
         await handler.init_websocket(websocket)
+        voicelive_task = None
         try:
-            await handler.connect_voicelive()
+            # Start Voice Live connection in background so we can respond to
+            # Infobip immediately. The platform requires continuous bidirectional
+            # audio; blocking here would cause a disconnect.
+            voicelive_task = asyncio.create_task(handler.connect_voicelive())
             while True:
                 msg = await websocket.receive()
                 await handler.handle_infobip_message(msg)
         except asyncio.CancelledError:
             logger.info("Infobip WebSocket cancelled")
-        except Exception:
-            logger.exception("Infobip WebSocket connection closed")
+        except Exception as e:
+            logger.exception("Infobip WebSocket closed: %s", e)
         finally:
+            if voicelive_task:
+                voicelive_task.cancel()
+            logger.info(
+                "Infobip WebSocket ending — frames in=%d out=%d voicelive_connected=%s",
+                handler._in_frame_count,
+                handler._out_frame_count,
+                handler._voicelive_connected,
+            )
             await handler._cleanup()
 
 elif _telephony_client == "acs":

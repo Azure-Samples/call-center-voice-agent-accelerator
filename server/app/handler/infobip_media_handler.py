@@ -6,6 +6,7 @@ Infobip WEBSOCKET_ENDPOINT protocol:
 - Text messages: DTMF events {"event": "websocket:dtmf", "digit": "3", "duration": 250}
 """
 
+import collections
 import json
 import logging
 
@@ -32,17 +33,18 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
         self._token_validator = token_validator  # callable: validate_ws_token(token) -> bool
         self._out_frame_count = 0
         self._in_frame_count = 0
+        self._silence_frame = b'\x00' * VOICE_LIVE_FRAME_BYTES  # 20ms silence
+        # Paced output buffer: stores 960-byte frames, drained one per incoming frame.
+        # This enables barge-in by clearing unsent frames when the user speaks.
+        self._out_buffer = collections.deque()
 
     # ------------------------------------------------------------------
     # Voice Live hooks
     # ------------------------------------------------------------------
 
     async def on_speech_started(self):
-        """Barge-in: clear TTS buffer."""
-        if self._ambient_mixer is not None:
-            async with self._tts_buffer_lock:
-                self._tts_output_buffer.clear()
-                self._tts_playback_started = False
+        """Barge-in: discard buffered AI audio so the caller hears silence immediately."""
+        self._out_buffer.clear()
 
     async def on_transcript_done(self, transcript: str):
         """Log only — Infobip has no transcript channel."""
@@ -53,34 +55,27 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
     # ------------------------------------------------------------------
 
     async def _send_audio_to_client(self, audio_bytes: bytes):
-        """Send PCM audio from Voice Live (24kHz) to Infobip WebSocket.
+        """Buffer PCM audio from Voice Live (24kHz) for paced delivery to Infobip.
 
-        Splits into 960-byte frames (20ms at 24kHz).
+        Splits into 960-byte frames and queues them. Frames are sent one-per-incoming-frame
+        in handle_infobip_message, giving us real-time pacing and barge-in support.
         """
-        if not self.infobip_ws:
-            logger.warning("[InfobipMediaHandler] infobip_ws is None, cannot send audio")
-            return
+        self._out_frame_count += 1
+        if self._out_frame_count == 1:
+            logger.info("[InfobipMediaHandler] First outgoing audio chunk: %d bytes", len(audio_bytes))
+        elif self._out_frame_count % 100 == 0:
+            logger.info("[InfobipMediaHandler] Outgoing audio chunks sent: %d (buffer=%d frames)",
+                        self._out_frame_count, len(self._out_buffer))
 
-        try:
-            self._out_frame_count += 1
-            if self._out_frame_count == 1:
-                logger.info("[InfobipMediaHandler] First outgoing audio chunk: %d bytes", len(audio_bytes))
-            elif self._out_frame_count % 100 == 0:
-                logger.info("[InfobipMediaHandler] Outgoing audio chunks sent: %d", self._out_frame_count)
+        offset = 0
+        while offset + VOICE_LIVE_FRAME_BYTES <= len(audio_bytes):
+            self._out_buffer.append(audio_bytes[offset:offset + VOICE_LIVE_FRAME_BYTES])
+            offset += VOICE_LIVE_FRAME_BYTES
 
-            offset = 0
-            while offset + VOICE_LIVE_FRAME_BYTES <= len(audio_bytes):
-                frame = audio_bytes[offset:offset + VOICE_LIVE_FRAME_BYTES]
-                await self.infobip_ws.send(frame)
-                offset += VOICE_LIVE_FRAME_BYTES
-
-            # Pad partial frame with silence
-            if offset < len(audio_bytes):
-                remaining = audio_bytes[offset:]
-                padded = remaining + b'\x00' * (VOICE_LIVE_FRAME_BYTES - len(remaining))
-                await self.infobip_ws.send(padded)
-        except Exception:
-            logger.exception("[InfobipMediaHandler] Failed to send audio to Infobip")
+        # Pad partial frame with silence
+        if offset < len(audio_bytes):
+            remaining = audio_bytes[offset:]
+            self._out_buffer.append(remaining + b'\x00' * (VOICE_LIVE_FRAME_BYTES - len(remaining)))
 
     # ------------------------------------------------------------------
     # Infobip message handling
@@ -102,7 +97,23 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
             elif self._in_frame_count % 500 == 0:
                 logger.info("[InfobipMediaHandler] Incoming audio frames: %d", self._in_frame_count)
 
-            await self.handle_audio(message)
+            # Send one outgoing frame per incoming frame (20ms pacing).
+            # If AI audio is buffered, send it; otherwise send silence to keep
+            # the bidirectional stream alive (Infobip disconnects on gaps).
+            try:
+                frame = self._out_buffer.popleft() if self._out_buffer else self._silence_frame
+                await self.infobip_ws.send(frame)
+            except Exception:
+                pass
+
+            # Forward caller audio to Voice Live (skip if not connected yet)
+            if not self._voicelive_connected:
+                return
+
+            try:
+                await self.handle_audio(message)
+            except Exception:
+                logger.exception("[InfobipMediaHandler] Error processing audio frame %d", self._in_frame_count)
             return
 
         # Text messages are JSON

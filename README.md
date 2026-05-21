@@ -8,9 +8,7 @@ The Azure voice live API is a solution enabling low-latency, high-quality speech
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-As an alternative for telephony integration, the Twilio Media Streams API provides access to the raw audio from a Programmable Voice call by streaming it over WebSockets to a destination you specify. This enables use cases such as real-time transcriptions, sentiment analysis, voice authentication, and more. You can also stream raw audio into a Twilio Voice call from another application. Learn more about [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams).
-
-The Infobip Calls API provides programmable voice capabilities with WebSocket-based audio streaming. It supports inbound and outbound calls with real-time media bridging via the Dialog API, allowing you to connect callers directly to your AI voice agent. Learn more about [Infobip Voice Calls](https://www.infobip.com/docs/voice-and-video/calls).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams) and [Infobip](https://www.infobip.com/docs/voice-and-video/calls).
 
 
 <div align="center">
@@ -286,7 +284,7 @@ TWILIO_AUTH_TOKEN=your_auth_token_here
 
 ### 📞 Telephony with Infobip Client (Call Center Scenario)
 
-You can use **Infobip** as the telephony provider by setting `INFOBIP_API_KEY`. When configured, the server registers Infobip routes (`/infobip/incoming` and `/infobip/ws`). Inbound calls are handled via the [Infobip Calls API](https://www.infobip.com/docs/api/channels/voice/calls) — the server answers the call, plays a greeting, then bridges the caller's audio to Azure Voice Live via a WebSocket connection.
+You can use **Infobip** as the telephony provider by setting `INFOBIP_API_KEY`. When configured, the server registers Infobip routes (`/infobip/incoming` and `/infobip/ws`). Inbound calls are handled via the [Infobip Calls API](https://www.infobip.com/docs/api/channels/voice/calls) — the server answers the call, then bridges the caller's audio to Azure Voice Live via a WebSocket connection.
 
 **Prerequisites:**
 - An [Infobip account](https://www.infobip.com/signup) with Voice capabilities enabled
@@ -328,9 +326,8 @@ The API key is stored securely in Azure Key Vault and injected into the Containe
 
 **What happens when a call comes in:**
 1. Infobip sends a `CALL_RECEIVED` webhook to `/infobip/incoming` — the server answers the call
-2. A TTS greeting ("Please wait while we connect you...") is played to the caller
-3. The server creates a Dialog that bridges the caller to the WebSocket endpoint
-4. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
+2. Once established, the server creates a Dialog that bridges the caller to the WebSocket endpoint
+3. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
 
 ---
 ### Local Execution
