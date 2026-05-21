@@ -24,6 +24,8 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
 )
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 app.config["TWILIO_AUTH_TOKEN"] = os.getenv("TWILIO_AUTH_TOKEN", "")
+app.config["INFOBIP_API_KEY"] = os.getenv("INFOBIP_API_KEY", "")
+app.config["INFOBIP_API_BASE_URL"] = os.getenv("INFOBIP_API_BASE_URL", "")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -43,6 +45,8 @@ else:
 
 if app.config["TWILIO_AUTH_TOKEN"]:
     _telephony_client = "twilio"
+elif app.config["INFOBIP_API_KEY"]:
+    _telephony_client = "infobip"
 else:
     _telephony_client = "acs"
 logger.info("Telephony client: %s", _telephony_client)
@@ -128,6 +132,57 @@ if _telephony_client == "twilio":
         except Exception:
             logger.exception("Twilio WebSocket connection closed")
         finally:
+            await handler._cleanup()
+
+elif _telephony_client == "infobip":
+    from app.handler.infobip_event_handler import InfobipEventHandler
+    from app.handler.infobip_media_handler import InfobipMediaHandler
+
+    infobip_handler = InfobipEventHandler(app.config)
+
+    @app.route("/infobip/incoming", methods=["POST"])
+    async def infobip_incoming_call():
+        """Handles incoming Infobip voice call webhooks."""
+        logger.info("Infobip /infobip/incoming webhook called")
+
+        if not infobip_handler.api_key:
+            return "Service Unavailable", 503
+
+        request_data = await request.get_json()
+        host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
+        return await infobip_handler.handle_incoming_call(request_data, host_url)
+
+    @app.websocket("/infobip/ws")
+    async def infobip_ws():
+        """WebSocket endpoint for Infobip WEBSOCKET call legs to bridge to Voice Live."""
+        logger = logging.getLogger("infobip_ws")
+        logger.info("Incoming Infobip WebSocket connection")
+
+        handler = InfobipMediaHandler(app.config, token_validator=infobip_handler.validate_ws_token)
+        handler.infobip_ws = websocket
+        await handler.init_websocket(websocket)
+        voicelive_task = None
+        try:
+            # Start Voice Live connection in background so we can respond to
+            # Infobip immediately. The platform requires continuous bidirectional
+            # audio; blocking here would cause a disconnect.
+            voicelive_task = asyncio.create_task(handler.connect_voicelive())
+            while True:
+                msg = await websocket.receive()
+                await handler.handle_infobip_message(msg)
+        except asyncio.CancelledError:
+            logger.info("Infobip WebSocket cancelled")
+        except Exception as e:
+            logger.exception("Infobip WebSocket closed: %s", e)
+        finally:
+            if voicelive_task:
+                voicelive_task.cancel()
+            logger.info(
+                "Infobip WebSocket ending — frames in=%d out=%d voicelive_connected=%s",
+                handler._in_frame_count,
+                handler._out_frame_count,
+                handler._voicelive_connected,
+            )
             await handler._cleanup()
 
 elif _telephony_client == "acs":

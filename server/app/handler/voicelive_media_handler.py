@@ -9,6 +9,7 @@ import asyncio
 import base64
 import json
 import logging
+import time
 import uuid
 from typing import Optional
 
@@ -43,6 +44,7 @@ class VoiceLiveMediaHandler:
         self._send_queue = asyncio.Queue()
         self._send_task = None
         self._receiver_task = None
+        self._voicelive_connected = False  # True while Voice Live WS is healthy
 
         # Client WebSocket
         self.client_ws = None
@@ -69,6 +71,7 @@ class VoiceLiveMediaHandler:
         return {
             "type": "session.update",
             "session": {
+                "modalities": ["text", "audio"],
                 "instructions": "You are a helpful AI assistant responding in natural, engaging language.",
                 "turn_detection": {
                     "type": "azure_semantic_vad",
@@ -99,6 +102,7 @@ class VoiceLiveMediaHandler:
 
         headers = {"x-ms-client-request-id": str(uuid.uuid4())}
 
+        t0 = time.perf_counter()
         if self.client_id:
             async with ManagedIdentityCredential(client_id=self.client_id) as credential:
                 token = await credential.get_token(
@@ -107,9 +111,13 @@ class VoiceLiveMediaHandler:
                 headers["Authorization"] = f"Bearer {token.token}"
         else:
             headers["api-key"] = self.api_key
+        t1 = time.perf_counter()
+        logger.info("[VoiceLive] Auth completed in %.2fs", t1 - t0)
 
         self.ws = await ws_connect(url, additional_headers=headers)
-        logger.info("[VoiceLive] Connected to Voice Live API")
+        t2 = time.perf_counter()
+        logger.info("[VoiceLive] WebSocket connected in %.2fs (total %.2fs)", t2 - t1, t2 - t0)
+        self._voicelive_connected = True
 
         await self._send_json(self._session_config())
         await self._send_json({"type": "response.create"})
@@ -119,6 +127,8 @@ class VoiceLiveMediaHandler:
 
     async def send_audio(self, audio_b64: str):
         """Queue PCM 24kHz 16-bit mono audio (base64) to send to Voice Live."""
+        if not self._voicelive_connected:
+            return
         await self._send_queue.put(
             json.dumps({"type": "input_audio_buffer.append", "audio": audio_b64})
         )
@@ -142,6 +152,7 @@ class VoiceLiveMediaHandler:
 
     async def _receiver_loop(self):
         """Receives events from Voice Live and dispatches to hook methods."""
+        cancelled = False
         try:
             async for message in self.ws:
                 try:
@@ -203,9 +214,20 @@ class VoiceLiveMediaHandler:
                     case _:
                         logger.debug("[VoiceLive] Event: %s", event_type)
         except asyncio.CancelledError:
-            pass
+            cancelled = True
+            raise
         except Exception:
             logger.exception("[VoiceLive] Receiver loop error")
+        finally:
+            self._voicelive_connected = False
+            # If Voice Live dropped unexpectedly (not a normal cancellation),
+            # close the client WebSocket so the caller-side loop exits cleanly.
+            if not cancelled and self.client_ws:
+                try:
+                    logger.warning("[VoiceLive] Voice Live disconnected — closing client WebSocket")
+                    await self.client_ws.close(1001)  # Going Away
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------
     # Client WebSocket
