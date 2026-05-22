@@ -6,8 +6,9 @@ FROM mcr.microsoft.com/devcontainers/python:3.12-bookworm AS base
 # Patch system packages (fixes CVE-2025-1390 libcap2)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
-# Patch system pip so Defender sees the fixed version (fixes CVE-2026-6357)
 RUN pip install --no-cache-dir --upgrade pip>=26.1
+RUN pip install --no-cache-dir --upgrade setuptools>=80.0.0
+RUN pip install --no-cache-dir --upgrade GitPython>=3.1.50
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
