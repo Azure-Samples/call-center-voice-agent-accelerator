@@ -13,6 +13,15 @@
       },
       "appExists": {
         "value": "${SERVICE_APP_RESOURCE_EXISTS=false}"
+      },
+      "twilioAuthToken": {
+        "value": "${TWILIO_AUTH_TOKEN}"
+      },
+      "infobipApiKey": {
+        "value": "${INFOBIP_API_KEY}"
+      },
+      "infobipApiBaseUrl": {
+        "value": "${INFOBIP_API_BASE_URL}"
       }
     }
   }

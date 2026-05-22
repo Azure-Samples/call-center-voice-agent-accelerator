@@ -214,6 +214,7 @@
       socket.onclose = () => {
         console.log("WebSocket closed");
         stopMicrophone();
+        stopPlayback();
         document.getElementById("startBtn").disabled = false;
         document.getElementById("stopBtn").disabled = true;
       };
