@@ -8,7 +8,7 @@ param twilioAuthToken string = ''
 @secure()
 param infobipApiKey string = ''
 
-var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
+var sanitizedKeyVaultName = keyVaultName
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: sanitizedKeyVaultName
