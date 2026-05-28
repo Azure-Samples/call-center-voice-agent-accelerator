@@ -1,11 +1,9 @@
 param location string
-param environmentName string
 param uniqueSuffix string
 param identityName string
 param tags object = {}
 
 param adminUserEnabled bool = true
-param anonymousPullEnabled bool = false
 param dataEndpointEnabled bool = false
 param encryption object = {
   status: 'disabled'
@@ -20,15 +18,14 @@ param zoneRedundancy string = 'Disabled'
 // Hardcode container registry name with unique suffix
 var containerRegistryName = take('cr${uniqueSuffix}', 32)
 
-// 2022-02-01-preview needed for anonymousPullEnabled
-resource containerRegistry 'Microsoft.ContainerRegistry/registries@2022-02-01-preview' = {
+// 2023-07-01 stable API version
+resource containerRegistry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: containerRegistryName
   location: location
   tags: tags
   sku: sku
   properties: {
     adminUserEnabled: adminUserEnabled
-    anonymousPullEnabled: anonymousPullEnabled
     dataEndpointEnabled: dataEndpointEnabled
     encryption: encryption
     networkRuleBypassOptions: networkRuleBypassOptions

@@ -58,7 +58,7 @@ To deploy this solution accelerator, ensure you have access to an [Azure subscri
 
 Check the [Azure Products by Region](https://azure.microsoft.com/explore/global-infrastructure/products-by-region/table) page and select a **region** where the following services are available: Azure AI Foundry Speech, Azure Communication Services, Azure Container Apps, and Container Registry.
 
-Here are some example regions where the services are available: East US2, West US2, Southeast Asia, Central India, Sweden Central.
+See [Voice Live supported regions](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live) for a full list. Common choices include East US 2, Sweden Central, West US 2, and Southeast Asia.
 Pricing varies per region and usage, so it isn't possible to predict exact costs for your usage. The majority of the Azure resources used in this infrastructure are on usage-based pricing tiers. However, Azure Container Registry has a fixed cost per registry per day.
 
 Use the [Azure pricing calculator](https://azure.microsoft.com/en-us/pricing/calculator) to calculate the cost of this solution in your subscription.
@@ -160,9 +160,16 @@ To change the `azd` parameters from the default values, follow the steps [here](
     ```shell
     azd up
     ```
-    It will prompt you to provide an `azd` environment name (like "flask-app"), select a subscription from your Azure account, and select a location (like "eastus"). Then it will provision the resources in your account and deploy the latest code. If you get an error with deployment, changing the location can help, as there may be availability constraints for some of the resources.
+    It will prompt you to provide an `azd` environment name (like "voice-agent-dev"), select a subscription from your Azure account, and select a [Voice Live region](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live).
 
-3. When `azd` has finished deploying, you'll see an endpoint URI in the command output. Visit that URI, and you should see the API output! 🎉
+    The setup wizard will then guide you through:
+    - **Model selection** — choose from 12 fully managed models across Pro, Basic, and Lite tiers (or bring your own)
+    - **Telephony provider selection** — choose ACS (default), Twilio, or Infobip
+    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio or Infobip
+
+    After provisioning completes, you'll see a deployment summary with your webhook endpoint(s) and next steps.
+
+3. When `azd` has finished deploying, open the **Application URL** shown in the output to test in your browser. 🎉
 
 4. When you've made any changes to the app code, you can just run:
 
@@ -170,13 +177,17 @@ To change the `azd` parameters from the default values, follow the steps [here](
     azd deploy
     ```
 
->[!NOTE]
->AZD will also setup the local Python environment for you, using `venv` and installing the required packages.
+5. To view live logs:
 
+    ```shell
+    azd monitor --logs
+    ```
 
 >[!NOTE]
->- Region: swedencentral is strongly recommended due to AI Foundry availability.
->- Post-Deployment: You can also setup ACS Event Grid subscription and PSTN to use the ACS client.
+>- All [supported models](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live#supported-models-and-regions) are fully managed — no deployment or capacity planning needed.
+>- Pricing is tiered (Pro, Basic, Lite) based on the model you choose. Default is `gpt-4o-mini` (Basic tier).
+>- See [Voice Live supported regions](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live) for available deployment locations.
+>- Post-Deployment: For ACS telephony, you'll still need to set up the Event Grid subscription and PSTN number (see [Testing the Agent](#testing-the-agent) below).
 
 
 
@@ -334,7 +345,7 @@ The API key is stored securely in Azure Key Vault and injected into the Containe
 
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
-Please follow the instructions in [the instructions in `service`](./service/README.md)
+Please follow the instructions in [the server README](./server/README.md)
 
 <br/>
 

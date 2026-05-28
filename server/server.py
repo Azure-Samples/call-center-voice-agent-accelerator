@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import signal
 
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
@@ -80,6 +81,12 @@ async def web_ws():
 async def index():
     """Serves the static index page."""
     return await app.send_static_file("index.html")
+
+
+@app.route("/health")
+async def health():
+    """Liveness/readiness probe endpoint."""
+    return {"status": "healthy"}, 200
 
 
 # ---------------------------------------------------------------------------
@@ -225,4 +232,13 @@ elif _telephony_client == "acs":
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    shutdown_event = asyncio.Event()
+
+    def _handle_signal(*_):
+        logger.info("Received shutdown signal, draining connections...")
+        shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, _handle_signal)
+    signal.signal(signal.SIGINT, _handle_signal)
+
+    app.run(debug=os.getenv("DEBUG_MODE", "false").lower() == "true", host="0.0.0.0", port=8000)

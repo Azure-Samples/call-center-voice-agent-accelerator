@@ -3,14 +3,23 @@ metadata:
   template: voice-live-agent@0.1.0
 requiredVersions:
   azd: ">=1.14.0"
+infra:
+  provider: bicep
+  path: infra
 services:
-    app:
-        project: server
-        host: containerapp
-        language: python
-        docker:
-          path: Dockerfile
-          remoteBuild: true
+  app:
+    project: server
+    host: containerapp
+    language: python
+    docker:
+      path: Dockerfile
+      remoteBuild: true
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./hooks/preprovision.ps1
+    interactive: true
+    continueOnError: false
 pipeline:
   variables:
     - AZURE_LOCATION
@@ -18,4 +27,7 @@ pipeline:
     - AZURE_CONTAINER_REGISTRY_ENDPOINT
     - SERVICE_API_ENDPOINTS
     - AZURE_VOICE_LIVE_ENDPOINT
+    - AZURE_VOICE_LIVE_MODEL
     - TWILIO_AUTH_TOKEN
+    - INFOBIP_API_KEY
+    - INFOBIP_API_BASE_URL
