@@ -13,7 +13,7 @@ Alternatively, telephony integration is supported through third-party providers,
 
 <div align="center">
   
-[**Features**](#features) \| [**Getting Started**](#getting-started) \| [**Testing the Agent**](#testing-the-agent) \| [**Guidance**](#guidance) \| [**Resources**](#resources)
+[**Features**](#features) \| [**Getting Started**](#getting-started) \| [**Testing the Agent**](#testing-the-agent) \| [**Local Development**](#local-development) \| [**Resources**](#resources)
 
 </div>
 
@@ -177,23 +177,43 @@ To change the `azd` parameters from the default values, follow the steps [here](
     azd deploy
     ```
 
-5. To view live logs:
+5. To switch models after deployment (no redeploy needed):
+
+    ```shell
+    az containerapp update -n <app-name> -g <resource-group> --set-env-vars "AZURE_VOICE_LIVE_MODEL=gpt-4.1-mini"
+    ```
+
+    The model is a runtime-only setting — changing it does not require `azd up` or any infrastructure changes. Update `azd env` too to keep future deploys consistent:
+    ```shell
+    azd env set AZURE_VOICE_LIVE_MODEL gpt-4.1-mini
+    ```
+
+6. To view live logs:
 
     ```shell
     azd monitor --logs
     ```
 
+7. When done, clean up all resources:
+
+    ```shell
+    azd down
+    ```
+
+
+
 >[!NOTE]
 >- All [supported models](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live#supported-models-and-regions) are fully managed — no deployment or capacity planning needed.
 >- Pricing is tiered (Pro, Basic, Lite) based on the model you choose. Default is `gpt-4o-mini` (Basic tier).
->- See [Voice Live supported regions](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live) for available deployment locations.
->- Post-Deployment: For ACS telephony, you'll still need to set up the Event Grid subscription and PSTN number (see [Testing the Agent](#testing-the-agent) below).
+>- **Not all models are available in every region.** The setup wizard validates your selection and will block incompatible model/region combinations. Models available in all regions include: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-5`, `gpt-5-chat`, `gpt-5-mini`, `gpt-5-nano`.
+>- See [Voice Live supported regions and models](https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live) for the full compatibility matrix.
+>- Post-Deployment: Webhook configuration is handled automatically by the post-deploy script. For ACS telephony, you'll still need to acquire a PSTN phone number (see [Testing the Agent](#testing-the-agent) below).
 
 
 
 ## Testing the Agent
 
-After deployment, you can verify that your Voice Agent is running correctly using either the Web Client (for quick testing) or the ACS Phone Client (for simulating a real-world call center scenario).
+After deployment, you can verify that your Voice Agent is running correctly using the **Web Client** (quick browser test) or a **telephony client** for a real-world call center scenario.
 
 ### 🌐 Web Client (Test Mode)
 
@@ -214,25 +234,28 @@ Use this browser-based client to confirm your Container App is up and responding
 
 This simulates a real inbound phone call to your voice agent using **Azure Communication Services (ACS)**.
 
+#### 1. Webhook (Automatic)
 
-#### 1. Set Up Incoming Call Webhook
+The `IncomingCall` Event Grid subscription is **created automatically** by the post-deploy script during `azd up`. No manual portal configuration is needed.
+
+<details>
+<summary>Manual setup (if needed)</summary>
 
 1. In the same resource group, find and open the **Communication Services** resource.
 2. In the left-hand menu, click **Events**.
 3. Click **+ Event Subscription** and fill in the following:
-
    - **Event Type**: `IncomingCall`
    - **Endpoint Type**: `Web Hook`
    - **Endpoint Address**:
      ```
      https://<your-container-app-url>/acs/incomingcall
      ```
-     Replace `<your-container-app-url>` with the Application URL from your Container App.
 
 📸 Refer to the screenshot below for guidance:
 
 ![Event Subscription screenshot](./docs/images/acs_eventsubscription_v0.0.1.png)
 
+</details>
 
 #### 2. Get a Phone Number
 
@@ -243,35 +266,33 @@ If you haven't already, obtain a phone number for your ACS resource:
 
 #### 3. Call the Agent
 
-Once your event subscription is configured and the phone number is active:
+Once the phone number is active:
 
 - Dial the ACS number.
 - Your call will connect to the real-time voice agent powered by Azure Voice Live.
 
 ### 📞 Telephony with Twilio Client (Call Center Scenario)
 
-You can switch the telephony provider from ACS to **Twilio** by setting `TWILIO_AUTH_TOKEN`. When this token is configured, the server registers Twilio routes (`/voice` and `/twilio/ws`) instead of ACS routes. Inbound calls are handled via [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) — the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
+Inbound calls are handled via [Twilio Media Streams](https://www.twilio.com/docs/voice/media-streams) — the server validates the request, connects the caller's audio to the AI agent via a real-time WebSocket, and bridges it to Azure Voice Live.
 
-**Prerequisites:**
-- A [Twilio account](https://www.twilio.com/try-twilio) with a phone number
-- Your **Twilio Auth Token** (found in the [Twilio Console](https://www.twilio.com/console))
+#### 1. Prerequisites
 
-**Setup with `azd`:**
+- A [Twilio account](https://www.twilio.com/try-twilio)
+- A phone number purchased in the [Twilio Console](https://www.twilio.com/console)
 
-```bash
-# Set your Twilio Auth Token before deploying
-azd env set TWILIO_AUTH_TOKEN <your-twilio-auth-token>
+> During `azd up`, the setup wizard prompts for Twilio credentials and stores the token securely in Azure Key Vault.
 
-# Then deploy:
-azd up
-# or redeploy:
-azd provision
-azd deploy
-```
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `TWILIO_ACCOUNT_SID` | Your Twilio Account SID | [Twilio Console](https://www.twilio.com/console) → Account Info |
+| `TWILIO_AUTH_TOKEN` | Your Twilio Auth Token | [Twilio Console](https://www.twilio.com/console) → Account Info |
 
-The token is stored securely in Azure Key Vault and injected into the Container App as a secret reference.
+#### 2. Webhook (Automatic)
 
-**Configure Twilio Webhook:**
+The Twilio webhook is **configured automatically** by the post-deploy script during `azd up`. It sets your phone number's voice URL to `https://<your-container-app-url>/voice`.
+
+<details>
+<summary>Manual setup (if needed)</summary>
 
 1. In the [Twilio Console](https://console.twilio.com), go to your phone number's configuration.
 2. Under **PhoneNumber → A Call Comes In**, set:
@@ -279,73 +300,74 @@ The token is stored securely in Azure Key Vault and injected into the Container 
    - **HTTP Method:** `POST`
 3. Save changes.
 
-**What happens when a call comes in:**
-1. Twilio sends a request to `/voice` — the server validates it and returns instructions (TwiML) to start a media stream
-2. Twilio opens a WebSocket to `/twilio/ws` — the server verifies the embedded token, then bridges the caller's audio to Azure Voice Live in real time
-3. The AI agent hears the caller, generates a response, and the audio is streamed back through the same connection
+</details>
 
-**Local development:**
+#### 3. Call the Agent
 
-For local testing, set `TWILIO_AUTH_TOKEN` in your `.env` file:
-```
-TWILIO_AUTH_TOKEN=your_auth_token_here
-```
+Dial your Twilio phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
 
-> **Note:** `TWILIO_AUTH_TOKEN` is required for both local and deployed environments. Without it, incoming calls will be rejected.
+**How it works:**
+1. Twilio sends a request to `/voice` — the server validates it and returns TwiML to start a media stream
+2. Twilio opens a WebSocket to `/twilio/ws` — the server verifies the embedded token, then bridges audio to Azure Voice Live
+3. The AI agent hears the caller, generates a response, and audio is streamed back through the same connection
 
 ### 📞 Telephony with Infobip Client (Call Center Scenario)
 
-You can use **Infobip** as the telephony provider by setting `INFOBIP_API_KEY`. When configured, the server registers Infobip routes (`/infobip/incoming` and `/infobip/ws`). Inbound calls are handled via the [Infobip Calls API](https://www.infobip.com/docs/api/channels/voice/calls) — the server answers the call, then bridges the caller's audio to Azure Voice Live via a WebSocket connection.
+Inbound calls are handled via the [Infobip Calls API](https://www.infobip.com/docs/api/channels/voice/calls) — the server answers the call, then bridges the caller's audio to Azure Voice Live via a WebSocket connection.
 
-**Prerequisites:**
+#### 1. Prerequisites
+
 - An [Infobip account](https://www.infobip.com/signup) with Voice capabilities enabled
 - A phone number purchased in the [Infobip Portal](https://portal.infobip.com)
 
-**Setup with `azd`:**
-
-```bash
-# Set your Infobip account credentials
-azd env set INFOBIP_API_KEY <your-infobip-api-key>
-azd env set INFOBIP_API_BASE_URL <your-infobip-base-url>
-
-# Deploy
-azd up
-```
+> During `azd up`, the setup wizard prompts for your Infobip API key and base URL, and stores the key securely in Azure Key Vault.
 
 | Variable | Description | Where to find it |
 |----------|-------------|------------------|
-| `INFOBIP_API_KEY` | Your Infobip API key | Infobip Portal → Homepage → API Key |
-| `INFOBIP_API_BASE_URL` | Your account's API base URL (e.g. `https://xxxxx.api.infobip.com`) | Infobip Portal → Homepage → Base URL |
+| `INFOBIP_API_KEY` | Your Infobip API key | [Infobip Portal](https://portal.infobip.com) → Homepage → API Key |
+| `INFOBIP_API_BASE_URL` | Your account's API base URL (e.g. `https://xxxxx.api.infobip.com`) | [Infobip Portal](https://portal.infobip.com) → Homepage → Base URL |
 
-After deployment completes, copy your **Container App URL** from the output (e.g. `https://xxx.azurecontainerapps.io`).
+#### 2. Webhook (Automatic)
 
-The API key is stored securely in Azure Key Vault and injected into the Container App as a secret reference.
+All Infobip configuration is **set up automatically** by the post-deploy script during `azd up`:
+- Notification profile with webhook URL
+- Media stream configuration with WebSocket URL
+- Calls configuration
+- Event subscription for call lifecycle events
 
-**Configure Infobip Portal (requires your Container App URL):**
+<details>
+<summary>Manual setup (if needed)</summary>
 
 1. In the [Infobip Portal](https://portal.infobip.com), go to **Channels and Numbers → VOICE AND WEBRTC**.
-2. Under **Calls API → Calls Configuration**, set the **Webhook URL** to:
-   ```
-   https://<your-container-app-url>/infobip/incoming
-   ```
+2. Under **Notification Profile**, create or update a profile with:
+   - **Notify URL:** `https://<your-container-app-url>/infobip/incoming`
 3. Under **Calls API → Media streaming**, create a new configuration with:
    - **URL:** `wss://<your-container-app-url>/infobip/ws`
    - **Audio format:** `audio/l16;rate=24000` (PCM 16-bit, 24kHz)
-4. Assign your Infobip phone number to this Calls Configuration.
+4. Under **Calls API → Calls Configuration**, create a configuration linked to your notification profile and media stream config.
+5. Assign your Infobip phone number to this Calls Configuration.
+6. Under **Event Subscription** (via API: `POST /subscriptions/1/subscription/VOICE_VIDEO`), create a subscription with events:
+   - `CALL_RECEIVED`, `CALL_ESTABLISHED`, `CALL_FINISHED`, `CALL_FAILED`, `CALL_STARTED`, `CALL_DISCONNECTED`
+   - `MEDIA_STREAM_STARTED`, `MEDIA_STREAM_FAILED`, `MEDIA_STREAM_FINISHED`
+   - `DIALOG_CREATED`, `DIALOG_ESTABLISHED`, `DIALOG_FAILED`, `DIALOG_FINISHED`
+   - `DTMF_CAPTURED`, `CALL_RINGING`, `CALL_PRE_ESTABLISHED`
 
-> No redeploy needed after portal configuration. The server automatically discovers the media streaming configuration by matching the WebSocket URL on the first incoming call.
+</details>
 
-**What happens when a call comes in:**
+#### 3. Call the Agent
+
+Dial your Infobip phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
+
+**How it works:**
 1. Infobip sends a `CALL_RECEIVED` webhook to `/infobip/incoming` — the server answers the call
 2. Once established, the server creates a Dialog that bridges the caller to the WebSocket endpoint
 3. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
 
----
-### Local Execution
+## Local Development
 
 Once the environment has been deployed with `azd up` you can also run the application locally.
 
-Please follow the instructions in [the server README](./server/README.md)
+Please follow the instructions in [the server README](./server/README.md).
 
 <br/>
 
@@ -432,20 +454,6 @@ You can add your own ambient audio files:
    ```
 
 4. Set `AMBIENT_PRESET=my_custom` in your `.env` file
-
-<br/>
-
-## Guidance
-
-### Resource Clean-up
-
-When you no longer need the resources created in this article, run the following command to power down the app:
-
-```bash
-azd down
-```
-
-If you want to redeploy to a different region, delete the `.azure` directory before running `azd up` again. In a more advanced scenario, you could selectively edit files within the `.azure` directory to change the region.
 
 <br/>
 

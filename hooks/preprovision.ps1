@@ -105,6 +105,37 @@ else {
     Write-Host "Model: $modelName (already configured)" -ForegroundColor Green
 }
 
+# --- Validate model-region compatibility ---
+# Models not listed here are available in ALL Voice Live regions.
+# See: https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live
+$regionModelSupport = @{
+    "gpt-realtime"      = @("australiaeast","canadaeast","eastus2","francecentral","southeastasia","swedencentral","uksouth","westus2")
+    "gpt-realtime-mini" = @("australiaeast","eastus2","francecentral","southeastasia","swedencentral","uksouth","westus2")
+    "gpt-4o"            = @("australiaeast","brazilsouth","eastus","eastus2","francecentral","italynorth","japaneast","norwayeast","southafricanorth","southcentralus","swedencentral","switzerlandnorth","uksouth","westeurope","westus","westus2","westus3")
+    "gpt-4o-mini"       = @("australiaeast","brazilsouth","eastus","eastus2","francecentral","italynorth","japaneast","norwayeast","southafricanorth","southcentralus","swedencentral","switzerlandnorth","uksouth","westeurope","westus","westus2","westus3")
+    "phi4-mm-realtime"  = @("eastus2","japaneast","swedencentral","westus2")
+    "phi4-mini"         = @("eastus2","japaneast","swedencentral","westus2")
+}
+
+if ($regionModelSupport.ContainsKey($modelName) -and -not [string]::IsNullOrWhiteSpace($selectedLocation)) {
+    $supportedRegions = $regionModelSupport[$modelName]
+    if ($selectedLocation -notin $supportedRegions) {
+        Write-Host ""
+        Write-Host "ERROR: '$modelName' is not available in '$selectedLocation' for Voice Live." -ForegroundColor Red
+        Write-Host "Supported regions for ${modelName}: $($supportedRegions -join ', ')" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "Options:" -ForegroundColor Cyan
+        Write-Host "  1. Change region:  azd env set AZURE_LOCATION <region>"
+        Write-Host "  2. Change model:   azd env set AZURE_VOICE_LIVE_MODEL <model>"
+        Write-Host ""
+        Write-Host "Models available in ALL Voice Live regions:" -ForegroundColor Green
+        Write-Host "  gpt-4.1, gpt-4.1-mini, gpt-4.1-nano, gpt-5, gpt-5-chat, gpt-5-mini, gpt-5-nano" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "Full matrix: https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live" -ForegroundColor DarkGray
+        exit 1
+    }
+}
+
 # --- Telephony configuration ---
 $twilioToken = azd env get-value TWILIO_AUTH_TOKEN 2>$null
 if ($LASTEXITCODE -ne 0) { $twilioToken = "" }
@@ -117,7 +148,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
     Write-Host "----------------------------"
     Write-Host "No telephony credentials detected. Choose a provider:"
     Write-Host ""
-    Write-Host "  [1] Azure Communication Services (default - no extra config needed)"
+    Write-Host "  [1] Azure Communication Services (default - no extra credentials needed)"
     Write-Host "  [2] Twilio (requires Auth Token)"
     Write-Host "  [3] Infobip (requires API Key + Base URL)"
     Write-Host ""
@@ -126,12 +157,36 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
 
     switch ($choice) {
         "2" {
+            $sid = Read-Host "Enter Twilio Account SID"
+            if ($sid -notmatch '^AC[a-f0-9]{32}$') {
+                Write-Host "ERROR: Invalid Twilio Account SID format (expected AC + 32 hex characters)." -ForegroundColor Red
+                exit 1
+            }
             $token = Read-Host "Enter Twilio Auth Token" -AsSecureString
             $tokenPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($token))
             if ($tokenPlain.Length -ne 32 -or $tokenPlain -notmatch '^[a-f0-9]+$') {
                 Write-Host "ERROR: Invalid Twilio Auth Token format (expected 32 hex characters)." -ForegroundColor Red
                 exit 1
             }
+            # Validate credentials against Twilio API
+            Write-Host "Validating Twilio credentials..." -ForegroundColor Gray
+            $authHeader = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${sid}:${tokenPlain}"))
+            try {
+                $resp = Invoke-RestMethod -Uri "https://api.twilio.com/2010-04-01/Accounts/$sid.json" `
+                    -Headers @{ Authorization = "Basic $authHeader" } -Method Get -ErrorAction Stop
+                Write-Host "Twilio account verified: $($resp.friendly_name)" -ForegroundColor Green
+            }
+            catch {
+                $status = $_.Exception.Response.StatusCode.value__
+                if ($status -eq 401) {
+                    Write-Host "ERROR: Twilio credentials are invalid (401 Unauthorized)." -ForegroundColor Red
+                }
+                else {
+                    Write-Host "ERROR: Failed to validate Twilio credentials (HTTP $status)." -ForegroundColor Red
+                }
+                exit 1
+            }
+            azd env set TWILIO_ACCOUNT_SID $sid
             azd env set TWILIO_AUTH_TOKEN $tokenPlain
             Write-Host "Twilio configured." -ForegroundColor Green
         }
@@ -139,28 +194,31 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             $key = Read-Host "Enter Infobip API Key" -AsSecureString
             $keyPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($key))
             $baseUrl = Read-Host "Enter Infobip API Base URL (e.g. https://xxxxx.api.infobip.com)"
-            if ($baseUrl -notmatch '^https://[a-z0-9]+\.api\.infobip\.com$') {
-                Write-Host "ERROR: Invalid Infobip Base URL format (expected https://xxxxx.api.infobip.com)." -ForegroundColor Red
+            $baseUrl = $baseUrl.TrimEnd('/')
+            if ($baseUrl -notmatch '^https?://') { $baseUrl = "https://$baseUrl" }
+            if ($baseUrl -notmatch '^https://[a-z0-9]+\.api(-[a-z0-9]+)?\.infobip\.com$') {
+                Write-Host "ERROR: Invalid Infobip Base URL format." -ForegroundColor Red
+                Write-Host "  Expected: https://<id>.api.infobip.com or https://<id>.api-<region>.infobip.com" -ForegroundColor Gray
                 exit 1
             }
             # Validate credentials against Infobip API
             try {
                 $resp = Invoke-WebRequest -Uri "$baseUrl/settings/1/accounts" `
                     -Headers @{Authorization = "App $keyPlain"} -UseBasicParsing -ErrorAction Stop
+                Write-Host "Infobip credentials validated." -ForegroundColor Green
             }
             catch {
                 $status = $_.Exception.Response.StatusCode.value__
                 if ($status -eq 401) {
                     Write-Host "ERROR: Infobip API key is invalid (401 Unauthorized)." -ForegroundColor Red
+                    exit 1
                 }
-                else {
-                    Write-Host "ERROR: Failed to validate Infobip credentials (HTTP $status)." -ForegroundColor Red
-                }
-                exit 1
+                # 403 means key is recognized but lacks admin scope — still valid for calls
+                Write-Host "Infobip API key verified." -ForegroundColor Green
             }
             azd env set INFOBIP_API_KEY $keyPlain
             azd env set INFOBIP_API_BASE_URL $baseUrl
-            Write-Host "Infobip configured (credentials validated)." -ForegroundColor Green
+            Write-Host "Infobip configured." -ForegroundColor Green
         }
         default {
             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green

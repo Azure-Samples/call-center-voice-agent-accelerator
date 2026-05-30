@@ -20,6 +20,11 @@ hooks:
     run: ./hooks/preprovision.ps1
     interactive: true
     continueOnError: false
+  postdeploy:
+    shell: pwsh
+    run: ./hooks/postdeploy.ps1
+    interactive: true
+    continueOnError: true
 pipeline:
   variables:
     - AZURE_LOCATION
@@ -28,6 +33,7 @@ pipeline:
     - SERVICE_API_ENDPOINTS
     - AZURE_VOICE_LIVE_ENDPOINT
     - AZURE_VOICE_LIVE_MODEL
+    - TWILIO_ACCOUNT_SID
     - TWILIO_AUTH_TOKEN
     - INFOBIP_API_KEY
     - INFOBIP_API_BASE_URL
