@@ -38,7 +38,8 @@ jobs:
           tenant-id: ${{ env.AZURE_TENANT_ID }}
           subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
       
-      - name: Log in with Azure (Federated Credentials)
+      # azd keeps a separate auth context from Azure CLI.
+      - name: Log in with azd (Federated Credentials)
         if: ${{ env.AZURE_CLIENT_ID != '' }}
         run: |
           azd auth login `
