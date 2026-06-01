@@ -30,7 +30,7 @@ jobs:
       - name: Install azd
         uses: Azure/setup-azd@v2
 
-      - name: Log in with Azure CLI (Federated Credentials)
+      - name: Log in with Azure CLI for preprovision hook
         if: ${{ env.AZURE_CLIENT_ID != '' }}
         uses: azure/login@v2
         with:
