@@ -4,7 +4,7 @@ This project is managed using `pyproject.toml` and the [`uv`](https://github.com
 ## 1. Test with Web Client
 
 ### Set Up Environment Variables
-Based on .env-sample.txt, create and construct your .env file to allow your local app to access your Azure resource.
+Based on `.env.sample`, create a `.env` file to allow your local app to access your Azure resource.
 
 ### Run the App Locally
 1. Run the local server:

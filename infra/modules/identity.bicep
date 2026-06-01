@@ -2,7 +2,7 @@ param location string
 param environmentName string
 param uniqueSuffix string
 
-var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', ''), '--', ''), '[^a-zA-Z0-9-]', ''), '_', ''))
+var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', ''), '--', ''), '_', ''))
 
 var userIdentityName = take('${sanitizedEnvName}-${uniqueSuffix}-id', 32)
 

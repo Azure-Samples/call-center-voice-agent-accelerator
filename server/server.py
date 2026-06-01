@@ -82,6 +82,12 @@ async def index():
     return await app.send_static_file("index.html")
 
 
+@app.route("/health")
+async def health():
+    """Liveness/readiness probe endpoint."""
+    return {"status": "healthy"}, 200
+
+
 # ---------------------------------------------------------------------------
 # Routes: Telephony (only one provider is registered)
 # ---------------------------------------------------------------------------
@@ -202,7 +208,7 @@ elif _telephony_client == "acs":
     async def acs_event_callbacks(context_id):
         """Handles ACS event callbacks for call connection and streaming events."""
         raw_events = await request.get_json()
-        return await acs_handler.process_callback_events(context_id, raw_events, app.config)
+        return await acs_handler.process_callback_events(raw_events)
 
     @app.websocket("/acs/ws")
     async def acs_ws():
@@ -225,4 +231,4 @@ elif _telephony_client == "acs":
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8000)
+    app.run(debug=os.getenv("DEBUG_MODE", "false").lower() == "true", host="0.0.0.0", port=8000)

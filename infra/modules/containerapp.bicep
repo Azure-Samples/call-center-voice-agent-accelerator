@@ -13,11 +13,15 @@ param twilioAuthTokenSecretUri string = ''
 param infobipApiKeySecretUri string = ''
 param infobipApiBaseUrl string = ''
 param logAnalyticsWorkspaceName string
+param appInsightsConnectionString string = ''
 @description('The name of the container image')
 param imageName string = ''
+param debugMode bool = false
+@description('Enable zone redundancy for the Container App Environment')
+param zoneRedundant bool = true
 
 // Helper to sanitize environmentName for valid container app name
-var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
@@ -113,7 +117,7 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             }
             {
               name: 'DEBUG_MODE'
-              value: 'true'
+              value: string(debugMode)
             }
           ], !empty(acsConnectionStringSecretUri) ? [
             {

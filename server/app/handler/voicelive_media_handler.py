@@ -1,6 +1,6 @@
-"""Base handler for Azure Voice Live API WebSocket connections.
+"""Base handler for Azure Voice Live API connections using the official SDK.
 
-Provides the shared Voice Live connection, sender/receiver loops, web client
+Provides the shared Voice Live connection, event processing, web client
 audio handling with ambient mixing, and cleanup logic. Telephony subclasses
 override hooks and handle_audio() to implement protocol-specific behavior.
 """
@@ -10,15 +10,28 @@ import base64
 import json
 import logging
 import time
-import uuid
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
+from azure.core.credentials import AzureKeyCredential
 from azure.identity.aio import ManagedIdentityCredential
-from websockets.asyncio.client import connect as ws_connect
-from websockets.typing import Data
+from azure.ai.voicelive.aio import connect as voicelive_connect
+from azure.ai.voicelive.models import (
+    AudioEchoCancellation,
+    AudioNoiseReduction,
+    AzureSemanticVad,
+    AzureStandardVoice,
+    InputAudioFormat,
+    Modality,
+    OutputAudioFormat,
+    RequestSession,
+    ServerEventType,
+)
 
 from .ambient_mixer import AmbientMixer
+
+# Data type for WebSocket messages (str or bytes) sent to client
+Data = Union[str, bytes]
 
 logger = logging.getLogger(__name__)
 
@@ -27,22 +40,22 @@ DEFAULT_CHUNK_SIZE = 4800  # 24000 samples/sec * 0.1 sec * 2 bytes
 
 
 class VoiceLiveMediaHandler:
-    """Handles the WebSocket connection to Azure Voice Live API and web clients.
+    """Handles the connection to Azure Voice Live API and web clients.
 
-    Provides web client audio handling (raw PCM + ambient mixing) by default.
-    Telephony subclasses (ACS, Twilio) override hooks for their specific protocols.
+    Uses the azure-ai-voicelive SDK for typed session config, event handling,
+    and audio streaming. Provides web client audio handling (raw PCM + ambient
+    mixing) by default. Telephony subclasses (ACS, Twilio) override hooks for
+    their specific protocols.
     """
-
-    _api_version = "2026-01-01-preview"
 
     def __init__(self, config):
         self.endpoint = config["AZURE_VOICE_LIVE_ENDPOINT"]
         self.model = config["VOICE_LIVE_MODEL"]
         self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
         self.client_id = config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"]
-        self.ws = None
-        self._send_queue = asyncio.Queue()
-        self._send_task = None
+        self.conn = None
+        self._conn_ctx = None  # async context manager from SDK connect()
+        self._credential = None  # kept alive for token refresh
         self._receiver_task = None
         self._voicelive_connected = False  # True while Voice Live WS is healthy
 
@@ -66,150 +79,111 @@ class VoiceLiveMediaHandler:
             except Exception as e:
                 logger.error(f"Failed to initialize AmbientMixer: {e}")
 
-    def _session_config(self):
-        """Return the session configuration to send on connect."""
-        return {
-            "type": "session.update",
-            "session": {
-                "modalities": ["text", "audio"],
-                "instructions": "You are a helpful AI assistant responding in natural, engaging language.",
-                "turn_detection": {
-                    "type": "azure_semantic_vad",
-                },
-                "input_audio_noise_reduction": {"type": "azure_deep_noise_suppression"},
-                "input_audio_echo_cancellation": {"type": "server_echo_cancellation"},
-                "voice": {
-                    "name": "en-US-Aria:DragonHDLatestNeural",
-                    "type": "azure-standard",
-                    "temperature": 0.8,
-                },
-            },
-        }
+    def _session_config(self) -> RequestSession:
+        """Return the typed session configuration for Voice Live."""
+        return RequestSession(
+            modalities=[Modality.TEXT, Modality.AUDIO],
+            instructions="You are a helpful AI assistant responding in natural, engaging language.",
+            turn_detection=AzureSemanticVad(),
+            input_audio_format=InputAudioFormat.PCM16,
+            output_audio_format=OutputAudioFormat.PCM16,
+            input_audio_noise_reduction=AudioNoiseReduction(type="azure_deep_noise_suppression"),
+            input_audio_echo_cancellation=AudioEchoCancellation(),
+            voice=AzureStandardVoice(name="en-US-Aria:DragonHDLatestNeural", temperature=0.8),
+        )
 
     # ------------------------------------------------------------------
     # Voice Live connection
     # ------------------------------------------------------------------
 
     async def connect_voicelive(self):
-        """Connect to Azure Voice Live API via WebSocket."""
-        endpoint = self.endpoint.rstrip("/")
-        model = self.model.strip()
-        url = (
-            f"{endpoint}/voice-live/realtime"
-            f"?api-version={self._api_version}&model={model}"
-        )
-        url = url.replace("https://", "wss://")
-
-        headers = {"x-ms-client-request-id": str(uuid.uuid4())}
-
+        """Connect to Azure Voice Live API using the SDK."""
         t0 = time.perf_counter()
-        if self.client_id:
-            async with ManagedIdentityCredential(client_id=self.client_id) as credential:
-                token = await credential.get_token(
-                    "https://cognitiveservices.azure.com/.default"
-                )
-                headers["Authorization"] = f"Bearer {token.token}"
-        else:
-            headers["api-key"] = self.api_key
-        t1 = time.perf_counter()
-        logger.info("[VoiceLive] Auth completed in %.2fs", t1 - t0)
 
-        self.ws = await ws_connect(url, additional_headers=headers)
+        if self.client_id:
+            self._credential = ManagedIdentityCredential(client_id=self.client_id)
+            credential = self._credential
+        else:
+            credential = AzureKeyCredential(self.api_key)
+
+        t1 = time.perf_counter()
+        logger.info("[VoiceLive] Credential prepared in %.2fs", t1 - t0)
+
+        self._conn_ctx = voicelive_connect(
+            endpoint=self.endpoint,
+            credential=credential,
+            model=self.model.strip(),
+        )
+        self.conn = await self._conn_ctx.__aenter__()
+
         t2 = time.perf_counter()
-        logger.info("[VoiceLive] WebSocket connected in %.2fs (total %.2fs)", t2 - t1, t2 - t0)
+        logger.info("[VoiceLive] SDK connected in %.2fs (total %.2fs)", t2 - t1, t2 - t0)
         self._voicelive_connected = True
 
-        await self._send_json(self._session_config())
-        await self._send_json({"type": "response.create"})
+        await self.conn.session.update(session=self._session_config())
+        await self.conn.response.create()
 
         self._receiver_task = asyncio.create_task(self._receiver_loop())
-        self._send_task = asyncio.create_task(self._sender_loop())
 
     async def send_audio(self, audio_b64: str):
-        """Queue PCM 24kHz 16-bit mono audio (base64) to send to Voice Live."""
+        """Send PCM 24kHz 16-bit mono audio (base64) to Voice Live."""
         if not self._voicelive_connected:
             return
-        await self._send_queue.put(
-            json.dumps({"type": "input_audio_buffer.append", "audio": audio_b64})
-        )
-
-    async def _send_json(self, obj):
-        """Send a JSON object directly to the Voice Live WebSocket."""
-        if self.ws:
-            await self.ws.send(json.dumps(obj))
-
-    async def _sender_loop(self):
-        """Continuously sends queued messages to Voice Live."""
-        try:
-            while True:
-                msg = await self._send_queue.get()
-                if self.ws:
-                    await self.ws.send(msg)
-        except asyncio.CancelledError:
-            pass
-        except Exception:
-            logger.exception("[VoiceLive] Sender loop error")
+        await self.conn.input_audio_buffer.append(audio=audio_b64)
 
     async def _receiver_loop(self):
-        """Receives events from Voice Live and dispatches to hook methods."""
+        """Receives typed events from Voice Live and dispatches to hook methods."""
         cancelled = False
         try:
-            async for message in self.ws:
-                try:
-                    event = json.loads(message)
-                except json.JSONDecodeError:
-                    continue
-
-                event_type = event.get("type", "")
+            async for event in self.conn:
+                event_type = event.type
 
                 match event_type:
-                    case "session.created":
-                        session_id = event.get("session", {}).get("id")
+                    case ServerEventType.SESSION_CREATED:
+                        session_id = event.session.id if hasattr(event, "session") else None
                         logger.info("[VoiceLive] Session ID: %s", session_id)
 
-                    case "session.updated":
+                    case ServerEventType.SESSION_UPDATED:
                         logger.info("[VoiceLive] Session updated")
 
-                    case "input_audio_buffer.cleared":
+                    case ServerEventType.INPUT_AUDIO_BUFFER_CLEARED:
                         logger.debug("[VoiceLive] Input audio buffer cleared")
 
-                    case "input_audio_buffer.speech_started":
+                    case ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STARTED:
                         logger.info(
                             "[VoiceLive] Speech started at %s ms",
-                            event.get("audio_start_ms"),
+                            event.audio_start_ms,
                         )
                         await self.on_speech_started()
 
-                    case "input_audio_buffer.speech_stopped":
+                    case ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
                         logger.info("[VoiceLive] Speech stopped")
 
-                    case "conversation.item.input_audio_transcription.completed":
-                        transcript = event.get("transcript")
+                    case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
+                        transcript = event.transcript
                         logger.debug("[VoiceLive] User: %s", transcript)
 
-                    case "conversation.item.input_audio_transcription.failed":
+                    case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_FAILED:
                         logger.warning(
-                            "[VoiceLive] Transcription error: %s", event.get("error")
+                            "[VoiceLive] Transcription error: %s", event.error if hasattr(event, "error") else "unknown"
                         )
 
-                    case "response.audio.delta":
-                        delta = event.get("delta", "")
+                    case ServerEventType.RESPONSE_AUDIO_DELTA:
+                        delta = event.delta
                         if delta:
                             await self.on_audio_delta(delta)
 
-                    case "response.audio_transcript.done":
-                        transcript = event.get("transcript")
+                    case ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DONE:
+                        transcript = event.transcript
                         logger.debug("[VoiceLive] AI: %s", transcript)
                         await self.on_transcript_done(transcript)
 
-                    case "response.done":
-                        response = event.get("response", {})
-                        logger.info(
-                            "[VoiceLive] Response done: id=%s", response.get("id")
-                        )
+                    case ServerEventType.RESPONSE_DONE:
+                        response_id = event.response.id if hasattr(event, "response") else None
+                        logger.info("[VoiceLive] Response done: id=%s", response_id)
 
-                    case "error":
-                        logger.error("[VoiceLive] Error: %s", event.get("error"))
+                    case ServerEventType.ERROR:
+                        logger.error("[VoiceLive] Error: %s", event.error)
 
                     case _:
                         logger.debug("[VoiceLive] Event: %s", event_type)
@@ -258,10 +232,8 @@ class VoiceLiveMediaHandler:
                 self._tts_output_buffer.clear()
                 self._tts_playback_started = False
 
-    async def on_audio_delta(self, audio_b64: str):
+    async def on_audio_delta(self, audio_bytes: bytes):
         """Handle audio from Voice Live — buffer for ambient or send directly."""
-        audio_bytes = base64.b64decode(audio_b64)
-
         if self._ambient_mixer is not None and self._ambient_mixer.is_enabled():
             async with self._tts_buffer_lock:
                 self._tts_output_buffer.extend(audio_bytes)
@@ -371,20 +343,25 @@ class VoiceLiveMediaHandler:
     # ------------------------------------------------------------------
 
     async def _cleanup(self):
-        """Cancel background tasks and close the Voice Live WebSocket."""
-        for task in (self._receiver_task, self._send_task):
-            if task:
-                task.cancel()
-                try:
-                    await task
-                except (asyncio.CancelledError, Exception):
-                    pass
-        self._receiver_task = None
-        self._send_task = None
-        if self.ws:
+        """Cancel background tasks and close the Voice Live connection."""
+        if self._receiver_task:
+            self._receiver_task.cancel()
             try:
-                await self.ws.close()
+                await self._receiver_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._receiver_task = None
+        if self._conn_ctx:
+            try:
+                await self._conn_ctx.__aexit__(None, None, None)
             except Exception:
                 pass
-            self.ws = None
+            self._conn_ctx = None
+            self.conn = None
+        if self._credential:
+            try:
+                await self._credential.close()
+            except Exception:
+                pass
+            self._credential = None
         logger.info("[VoiceLive] Cleaned up")
