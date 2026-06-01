@@ -11,9 +11,6 @@ from twilio.twiml.voice_response import VoiceResponse
 
 logger = logging.getLogger(__name__)
 
-# Token validity period in seconds
-_TOKEN_TTL = 60
-
 
 class TwilioEventHandler:
     """Validates Twilio webhook signatures and generates TwiML responses."""
@@ -33,27 +30,6 @@ class TwilioEventHandler:
             self.auth_token.encode(), timestamp.encode(), hashlib.sha256
         ).hexdigest()
         return f"{timestamp}.{sig}"
-
-    def verify_ws_token(self, token: str) -> bool:
-        """Verify a WebSocket token is valid and not expired."""
-        if not self.auth_token or not token:
-            return False
-        parts = token.split(".", 1)
-        if len(parts) != 2:
-            return False
-        timestamp_str, sig = parts
-        try:
-            timestamp = int(timestamp_str)
-        except ValueError:
-            return False
-        # Check expiry
-        if time.time() - timestamp > _TOKEN_TTL:
-            return False
-        # Verify signature
-        expected = hmac.new(
-            self.auth_token.encode(), timestamp_str.encode(), hashlib.sha256
-        ).hexdigest()
-        return hmac.compare_digest(sig, expected)
 
     def validate_request(self, url: str, params: dict, signature: str) -> bool:
         """Validate a Twilio HTTP webhook request signature.

@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import signal
 
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
@@ -209,7 +208,7 @@ elif _telephony_client == "acs":
     async def acs_event_callbacks(context_id):
         """Handles ACS event callbacks for call connection and streaming events."""
         raw_events = await request.get_json()
-        return await acs_handler.process_callback_events(context_id, raw_events, app.config)
+        return await acs_handler.process_callback_events(raw_events)
 
     @app.websocket("/acs/ws")
     async def acs_ws():
@@ -232,13 +231,4 @@ elif _telephony_client == "acs":
 
 
 if __name__ == "__main__":
-    shutdown_event = asyncio.Event()
-
-    def _handle_signal(*_):
-        logger.info("Received shutdown signal, draining connections...")
-        shutdown_event.set()
-
-    signal.signal(signal.SIGTERM, _handle_signal)
-    signal.signal(signal.SIGINT, _handle_signal)
-
     app.run(debug=os.getenv("DEBUG_MODE", "false").lower() == "true", host="0.0.0.0", port=8000)
