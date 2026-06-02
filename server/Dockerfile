@@ -14,8 +14,8 @@ ENV UV_LINK_MODE=copy \
 
 WORKDIR /app
 
-# Create virtual environment
-RUN python -m venv /app/.venv
+# Create virtual environment (without pip — uv handles installs)
+RUN python -m venv --without-pip /app/.venv
 
 # Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock /app/
@@ -32,11 +32,11 @@ COPY static /app/static/
 ###############
 FROM python:3.12-slim-bookworm
 
-# Patch system packages
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
-
-# Upgrade system pip (fixes GHSA-jp4c-xjxw-mgf9)
-RUN pip install --no-cache-dir --upgrade pip>=26.1
+# Patch system packages and strip pip/setuptools (not needed at runtime)
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
+    rm -rf /usr/local/lib/python3.12/dist-packages/pip* \
+           /usr/local/lib/python3.12/dist-packages/setuptools* \
+           /usr/local/bin/pip*
 
 # Create non-root user
 RUN groupadd -r app && useradd -r -d /app -g app -N app
