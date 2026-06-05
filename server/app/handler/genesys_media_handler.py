@@ -11,6 +11,7 @@ Reference: https://developer.genesys.cloud/devapps/audiohook
 
 import audioop
 import collections
+import hmac
 import json
 import logging
 import uuid
@@ -60,7 +61,7 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         """Validate the X-API-KEY header from the WebSocket upgrade request."""
         if not self.api_key or not provided_key:
             return False
-        return provided_key == self.api_key
+        return hmac.compare_digest(provided_key, self.api_key)
 
     # ------------------------------------------------------------------
     # AudioHook protocol message handling

@@ -41,7 +41,7 @@ else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 
 # ---------------------------------------------------------------------------
-# Telephony detection (exclusive: Twilio OR ACS, never both)
+# Telephony detection (exclusive: only one provider active at a time)
 # ---------------------------------------------------------------------------
 
 if app.config["TWILIO_AUTH_TOKEN"]:
