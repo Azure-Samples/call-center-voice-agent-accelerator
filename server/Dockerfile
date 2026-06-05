@@ -3,6 +3,9 @@
 ###############
 FROM python:3.12-slim-bookworm AS builder
 
+# Telephony provider: acs (default), twilio, infobip, or genesys
+ARG TELEPHONY=acs
+
 # Install and configure UV, see https://docs.astral.sh/uv/ for more information
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
@@ -20,8 +23,8 @@ RUN python -m venv --without-pip /app/.venv
 # Copy dependency files first for better layer caching
 COPY pyproject.toml uv.lock /app/
 
-# Sync the project into a new environment, using the frozen lockfile
-RUN uv sync --frozen --no-dev --no-install-project --no-editable --all-packages
+# Install core dependencies plus the selected telephony provider's extras
+RUN uv sync --frozen --no-dev --no-install-project --no-editable --all-packages --extra ${TELEPHONY}
 
 COPY *.py *.md /app/
 COPY app /app/app/
@@ -34,11 +37,14 @@ FROM python:3.12-slim-bookworm
 
 # Patch system packages and strip pip/setuptools (not needed at runtime)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
+    pip install --upgrade pip==25.3 && \
     rm -rf /usr/local/lib/python3.12/site-packages/pip* \
            /usr/local/lib/python3.12/site-packages/setuptools* \
            /usr/local/lib/python3.12/dist-packages/pip* \
            /usr/local/lib/python3.12/dist-packages/setuptools* \
-           /usr/local/bin/pip*
+           /usr/local/bin/pip* \
+           /usr/local/lib/python3.12/ensurepip/_bundled/pip* \
+           /usr/local/lib/python3.12/ensurepip/_bundled/setuptools*
 
 # Create non-root user
 RUN groupadd -r app && useradd -r -d /app -g app -N app

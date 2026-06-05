@@ -191,6 +191,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             }
             azd env set TWILIO_ACCOUNT_SID $sid
             azd env set TWILIO_AUTH_TOKEN $tokenPlain
+            azd env set TELEPHONY_PROVIDER twilio
             Write-Host "Twilio configured." -ForegroundColor Green
         }
         "3" {
@@ -221,6 +222,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             }
             azd env set INFOBIP_API_KEY $keyPlain
             azd env set INFOBIP_API_BASE_URL $baseUrl
+            azd env set TELEPHONY_PROVIDER infobip
             Write-Host "Infobip configured." -ForegroundColor Green
         }
         "4" {
@@ -235,24 +237,32 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
                 exit 1
             }
             azd env set GENESYS_API_KEY $gKey
+            azd env set TELEPHONY_PROVIDER genesys
             Write-Host "Genesys AudioHook configured." -ForegroundColor Green
             Write-Host ""
             Write-Host "After deployment, the post-deploy script will show your WebSocket URL and simulator link." -ForegroundColor Cyan
         }
         default {
+            azd env set TELEPHONY_PROVIDER acs
             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green
         }
     }
 }
 else {
     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
+        azd env set TELEPHONY_PROVIDER twilio
         Write-Host "Telephony: Twilio (credentials detected)" -ForegroundColor Green
     }
     elseif (-not [string]::IsNullOrWhiteSpace($infobipKey)) {
+        azd env set TELEPHONY_PROVIDER infobip
         Write-Host "Telephony: Infobip (credentials detected)" -ForegroundColor Green
     }
     elseif (-not [string]::IsNullOrWhiteSpace($genesysKey)) {
+        azd env set TELEPHONY_PROVIDER genesys
         Write-Host "Telephony: Genesys AudioHook (credentials detected)" -ForegroundColor Green
+    }
+    else {
+        azd env set TELEPHONY_PROVIDER acs
     }
 }
 
