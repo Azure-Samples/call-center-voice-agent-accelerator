@@ -34,7 +34,9 @@ FROM python:3.12-slim-bookworm
 
 # Patch system packages and strip pip/setuptools (not needed at runtime)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
-    rm -rf /usr/local/lib/python3.12/dist-packages/pip* \
+    rm -rf /usr/local/lib/python3.12/site-packages/pip* \
+           /usr/local/lib/python3.12/site-packages/setuptools* \
+           /usr/local/lib/python3.12/dist-packages/pip* \
            /usr/local/lib/python3.12/dist-packages/setuptools* \
            /usr/local/bin/pip*
 

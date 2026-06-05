@@ -23,6 +23,9 @@
     "infobipApiBaseUrl": {
       "value": "${INFOBIP_API_BASE_URL}"
     },
+    "genesysApiKey": {
+      "value": "${GENESYS_API_KEY}"
+    },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"
     }

@@ -12,6 +12,7 @@ param acsConnectionStringSecretUri string
 param twilioAuthTokenSecretUri string = ''
 param infobipApiKeySecretUri string = ''
 param infobipApiBaseUrl string = ''
+param genesysApiKeySecretUri string = ''
 param logAnalyticsWorkspaceName string
 param appInsightsConnectionString string = ''
 @description('The name of the container image')
@@ -95,6 +96,13 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: infobipApiKeySecretUri
             identity: identityId
           }
+        ] : [],
+        !empty(genesysApiKeySecretUri) ? [
+          {
+            name: 'genesys-api-key'
+            keyVaultUrl: genesysApiKeySecretUri
+            identity: identityId
+          }
         ] : [])
     }
     template: {
@@ -137,6 +145,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'INFOBIP_API_BASE_URL'
               value: infobipApiBaseUrl
+            }
+          ] : [], !empty(genesysApiKeySecretUri) ? [
+            {
+              name: 'GENESYS_API_KEY'
+              secretRef: 'genesys-api-key'
             }
           ] : [])
           resources: {

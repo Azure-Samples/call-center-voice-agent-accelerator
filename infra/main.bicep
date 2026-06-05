@@ -42,11 +42,15 @@ param twilioAuthToken string = ''
 param infobipApiKey string = ''
 @description('Infobip API Base URL (e.g. https://xxxxx.api.infobip.com)')
 param infobipApiBaseUrl string = ''
+@secure()
+@description('Genesys AudioHook API Key for Audio Connector authentication')
+param genesysApiKey string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
 
 var useTwilio = !empty(twilioAuthToken)
 var useInfobip = !empty(infobipApiKey)
+var useGenesys = !empty(genesysApiKey)
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -106,7 +110,7 @@ module aiServices 'modules/aiservices.bicep' = {
   }
 }
 
-module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip) {
+module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip && !useGenesys) {
   name: 'acs-deployment'
   scope: rg
   params: {
@@ -125,9 +129,10 @@ module keyvault 'modules/keyvault.bicep' = {
     keyVaultName: keyVaultName
     tags: tags
     #disable-next-line BCP327
-    acsConnectionString: (!useTwilio && !useInfobip) ? acs.outputs.acsConnectionString : ''
+    acsConnectionString: (!useTwilio && !useInfobip && !useGenesys) ? acs.outputs.acsConnectionString : ''
     twilioAuthToken: twilioAuthToken
     infobipApiKey: infobipApiKey
+    genesysApiKey: genesysApiKey
   }
 }
 
@@ -161,6 +166,7 @@ module containerapp 'modules/containerapp.bicep' = {
     twilioAuthTokenSecretUri: keyvault.outputs.twilioAuthTokenUri
     infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
     infobipApiBaseUrl: infobipApiBaseUrl
+    genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -177,6 +183,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/voice'] : useInfobip ? ['https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'] : ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
+output SERVICE_API_ENDPOINTS array = useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/voice'] : useInfobip ? ['https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'] : useGenesys ? ['wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'] : ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName
