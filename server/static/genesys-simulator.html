@@ -92,7 +92,7 @@
     <div class="panel">
       <h2>Connection Settings</h2>
       <label for="apiKey">API Key (X-API-KEY header)</label>
-      <input type="text" id="apiKey" value="my-genesys-test-key" />
+      <input type="password" id="apiKey" value="my-genesys-test-key" />
       <label for="wsUrl">WebSocket URL</label>
       <input type="text" id="wsUrl" />
       <label for="orgId">Organization ID</label>
@@ -147,7 +147,10 @@
     function log(msg, cls = "log-info") {
       const el = document.getElementById("log");
       const ts = new Date().toISOString().substring(11, 23);
-      el.innerHTML += `<div class="${cls}">[${ts}] ${msg}</div>`;
+      const line = document.createElement("div");
+      line.className = cls;
+      line.textContent = `[${ts}] ${msg}`;
+      el.appendChild(line);
       el.scrollTop = el.scrollHeight;
     }
 
@@ -365,7 +368,13 @@
     }
 
     function handleProtocolMessage(raw) {
-      const msg = JSON.parse(raw);
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        log("Invalid JSON from server", "log-error");
+        return;
+      }
       serverSeq = msg.seq || serverSeq;
       const type = msg.type;
 
