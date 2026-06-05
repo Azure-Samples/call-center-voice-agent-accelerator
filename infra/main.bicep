@@ -162,6 +162,7 @@ module containerapp 'modules/containerapp.bicep' = {
     infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
     infobipApiBaseUrl: infobipApiBaseUrl
     logAnalyticsWorkspaceName: logAnalyticsName
+    tenantId: tenant().tenantId
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }

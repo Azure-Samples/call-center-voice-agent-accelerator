@@ -26,6 +26,7 @@ app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 app.config["TWILIO_AUTH_TOKEN"] = os.getenv("TWILIO_AUTH_TOKEN", "")
 app.config["INFOBIP_API_KEY"] = os.getenv("INFOBIP_API_KEY", "")
 app.config["INFOBIP_API_BASE_URL"] = os.getenv("INFOBIP_API_BASE_URL", "")
+app.config["AZURE_TENANT_ID"] = os.getenv("AZURE_TENANT_ID", "")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -194,6 +195,7 @@ elif _telephony_client == "infobip":
 elif _telephony_client == "acs":
     from app.handler.acs_event_handler import AcsEventHandler
     from app.handler.acs_media_handler import ACSMediaHandler
+    from app.handler.eventgrid_auth import validate_eventgrid_token
 
     acs_handler = AcsEventHandler(app.config)
 
@@ -201,6 +203,18 @@ elif _telephony_client == "acs":
     async def incoming_call_handler():
         """Handles initial incoming call event from EventGrid."""
         events = await request.get_json()
+        tenant_id = app.config.get("AZURE_TENANT_ID", "")
+        if tenant_id:
+            auth_header = request.headers.get("Authorization", "")
+            if not await validate_eventgrid_token(auth_header, tenant_id):
+                # Allow subscription validation through (no auth header on handshake)
+                is_validation = any(
+                    e.get("eventType") == "Microsoft.EventGrid.SubscriptionValidationEvent"
+                    for e in (events if isinstance(events, list) else [events])
+                )
+                if not is_validation:
+                    return "Unauthorized", 401
+
         host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
         return await acs_handler.process_incoming_call(events, host_url, app.config)
 

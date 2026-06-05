@@ -337,6 +337,12 @@ $acsResourceId = $acsResource.id
 $subscriptionName = "incoming-call-webhook"
 $containerAppUrl = $webhookUrl -replace '/acs/incomingcall$', ''
 
+# Get tenant ID for AAD delivery authentication
+$tenantId = azd env get-value AZURE_TENANT_ID 2>$null
+if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($tenantId)) {
+    $tenantId = az account show --query tenantId -o tsv 2>$null
+}
+
 # Check if subscription already exists
 $existingSub = az eventgrid event-subscription show `
     --name $subscriptionName `
@@ -361,7 +367,9 @@ if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingSub)) {
             --source-resource-id $acsResourceId `
             --endpoint $webhookUrl `
             --endpoint-type webhook `
-            --included-event-types "Microsoft.Communication.IncomingCall" | Out-Null
+            --included-event-types "Microsoft.Communication.IncomingCall" `
+            --azure-active-directory-tenant-id $tenantId `
+            --azure-active-directory-application-id-or-uri "https://eventgrid.azure.net" | Out-Null
 
         if ($LASTEXITCODE -eq 0) {
             Write-Host ""
@@ -384,7 +392,9 @@ if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($existingSub)) {
         --source-resource-id $acsResourceId `
         --endpoint $webhookUrl `
         --endpoint-type webhook `
-        --included-event-types "Microsoft.Communication.IncomingCall" | Out-Null
+        --included-event-types "Microsoft.Communication.IncomingCall" `
+        --azure-active-directory-tenant-id $tenantId `
+        --azure-active-directory-application-id-or-uri "https://eventgrid.azure.net" | Out-Null
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""

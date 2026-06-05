@@ -22,6 +22,7 @@ dependencies = [
     "twilio>=9.10.0",
     "azure-ai-voicelive[aiohttp]>=1.1.0",
     "urllib3>=2.7.0",
+    "PyJWT[crypto]>=2.8.0",
 ]
 
 [tool.uv]
