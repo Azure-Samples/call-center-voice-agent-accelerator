@@ -46,7 +46,7 @@ class InfobipEventHandler:
             return
 
         ws_url = host_url.replace("https://", "wss://").replace("http://", "ws://").rstrip("/") + "/infobip/ws"
-        url = f"{self.api_base_url}/calls/1/media-stream-configs"
+        url = self._build_url(self.api_base_url, "/calls/1/media-stream-configs")
         logger.info("[InfobipEventHandler] Discovering media stream config for: %s", ws_url)
 
         try:
@@ -87,9 +87,13 @@ class InfobipEventHandler:
             "Accept": "application/json",
         }
 
+    def _build_url(self, base: str, path: str) -> str:
+        """Build an Infobip API URL with the piIntegrator tracking query parameter."""
+        return f"{base}{path}?piIntegrator=mpj4"
+
     async def _answer_call(self, call_id: str) -> bool:
         """Answer an incoming call via Infobip API."""
-        url = f"{self.api_base_url}/calls/1/calls/{call_id}/answer"
+        url = self._build_url(self.api_base_url, f"/calls/1/calls/{call_id}/answer")
         logger.info("[InfobipEventHandler] Answering call: %s", url)
 
         async with aiohttp.ClientSession() as session:
@@ -108,7 +112,7 @@ class InfobipEventHandler:
     async def _create_dialog(self, call_id: str, api_base: str = None) -> bool:
         """Create a Dialog to bridge the call to a WebSocket endpoint."""
         base = api_base or self.api_base_url
-        url = f"{base}/calls/1/dialogs"
+        url = self._build_url(base, "/calls/1/dialogs")
 
         # Generate a one-time token for WebSocket authentication
         ws_token = secrets.token_urlsafe(32)
