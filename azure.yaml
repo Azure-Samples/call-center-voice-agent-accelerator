@@ -14,11 +14,17 @@ services:
     docker:
       path: Dockerfile
       remoteBuild: true
+      buildArgs:
+        - TELEPHONY=${TELEPHONY_PROVIDER}
 hooks:
   preprovision:
     shell: pwsh
     run: ./hooks/preprovision.ps1
     interactive: true
+    continueOnError: false
+  predeploy:
+    shell: pwsh
+    run: ./hooks/predeploy.ps1
     continueOnError: false
   postdeploy:
     shell: pwsh

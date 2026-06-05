@@ -86,4 +86,31 @@ To test Azure Communication Services (ACS) locally, we’ll expose the local ser
 
 - Use the **web client** for fast local testing.
 - Use **DevTunnel + ACS** to simulate phone calls and test telephony integration.
+- Use **Genesys AudioHook** to integrate with Genesys Cloud contact center.
 - Customize the `.env` file, system prompts, and runtime behavior to fit your use case.
+
+## 3. Test with Genesys AudioHook
+
+[Genesys AudioHook](https://developer.genesys.cloud/devapps/audiohook) (Audio Connector) streams real-time call audio from Genesys Cloud to your AudioHook endpoint for AI processing.
+
+### Set Up Environment Variables
+
+Add the following to your `.env` file:
+
+```
+GENESYS_API_KEY=your-chosen-api-key
+```
+
+### Run Locally
+
+```shell
+uv run server.py
+```
+
+The server starts with:
+- **AudioHook WebSocket**: `ws://127.0.0.1:8000/audiohook/ws`
+- **Browser Simulator**: `http://127.0.0.1:8000/genesys`
+
+Open the simulator page, enter the same API key, and click **Connect & Start Call** to test without a Genesys Cloud account.
+
+For production setup and full details, see the [Genesys AudioHook section](../README.md#-genesys-cloud-audiohook-audio-connector) in the top-level README.

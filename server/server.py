@@ -26,6 +26,7 @@ app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 app.config["TWILIO_AUTH_TOKEN"] = os.getenv("TWILIO_AUTH_TOKEN", "")
 app.config["INFOBIP_API_KEY"] = os.getenv("INFOBIP_API_KEY", "")
 app.config["INFOBIP_API_BASE_URL"] = os.getenv("INFOBIP_API_BASE_URL", "")
+app.config["GENESYS_API_KEY"] = os.getenv("GENESYS_API_KEY", "")
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s: %(message)s"
@@ -40,13 +41,15 @@ else:
     logger.info("Ambient scenes DISABLED (preset=none)")
 
 # ---------------------------------------------------------------------------
-# Telephony detection (exclusive: Twilio OR ACS, never both)
+# Telephony detection (exclusive: only one provider active at a time)
 # ---------------------------------------------------------------------------
 
 if app.config["TWILIO_AUTH_TOKEN"]:
     _telephony_client = "twilio"
 elif app.config["INFOBIP_API_KEY"]:
     _telephony_client = "infobip"
+elif app.config["GENESYS_API_KEY"]:
+    _telephony_client = "genesys"
 else:
     _telephony_client = "acs"
 logger.info("Telephony client: %s", _telephony_client)
@@ -80,6 +83,12 @@ async def web_ws():
 async def index():
     """Serves the static index page."""
     return await app.send_static_file("index.html")
+
+
+@app.route("/genesys")
+async def genesys_simulator():
+    """Serves the Genesys AudioHook client simulator page."""
+    return await app.send_static_file("genesys-simulator.html")
 
 
 @app.route("/health")
@@ -185,6 +194,47 @@ elif _telephony_client == "infobip":
                 voicelive_task.cancel()
             logger.info(
                 "Infobip WebSocket ending — frames in=%d out=%d voicelive_connected=%s",
+                handler._in_frame_count,
+                handler._out_frame_count,
+                handler._voicelive_connected,
+            )
+            await handler._cleanup()
+
+elif _telephony_client == "genesys":
+    from app.handler.genesys_media_handler import GenesysMediaHandler
+
+    @app.websocket("/audiohook/ws")
+    async def genesys_ws():
+        """WebSocket endpoint for Genesys AudioHook Audio Connector."""
+        logger = logging.getLogger("genesys_ws")
+        logger.info("Incoming Genesys AudioHook WebSocket connection")
+
+        # Validate API key: check X-API-KEY header (real Genesys) or query param (simulator)
+        provided_key = websocket.headers.get("X-API-KEY", "") or websocket.args.get("apikey", "")
+        handler = GenesysMediaHandler(app.config)
+        if not handler.validate_api_key(provided_key):
+            logger.warning("[GenesysHandler] Invalid API key — rejecting connection")
+            await websocket.accept()
+            await websocket.close(4403, "Invalid API key")
+            return
+
+        handler.genesys_ws = websocket
+        await handler.init_websocket(websocket)
+        voicelive_task = None
+        try:
+            voicelive_task = asyncio.create_task(handler.connect_voicelive())
+            while True:
+                msg = await websocket.receive()
+                await handler.handle_message(msg)
+        except asyncio.CancelledError:
+            logger.info("Genesys WebSocket cancelled")
+        except Exception as e:
+            logger.exception("Genesys WebSocket closed: %s", e)
+        finally:
+            if voicelive_task:
+                voicelive_task.cancel()
+            logger.info(
+                "Genesys WebSocket ending — frames in=%d out=%d voicelive_connected=%s",
                 handler._in_frame_count,
                 handler._out_frame_count,
                 handler._voicelive_connected,

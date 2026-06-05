@@ -141,8 +141,10 @@ $twilioToken = azd env get-value TWILIO_AUTH_TOKEN 2>$null
 if ($LASTEXITCODE -ne 0) { $twilioToken = "" }
 $infobipKey = azd env get-value INFOBIP_API_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $infobipKey = "" }
+$genesysKey = azd env get-value GENESYS_API_KEY 2>$null
+if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
 
-if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey)) {
+if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey)) {
     Write-Host ""
     Write-Host "Telephony Provider Selection" -ForegroundColor Yellow
     Write-Host "----------------------------"
@@ -151,6 +153,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
     Write-Host "  [1] Azure Communication Services (default - no extra credentials needed)"
     Write-Host "  [2] Twilio (requires Auth Token)"
     Write-Host "  [3] Infobip (requires API Key + Base URL)"
+    Write-Host "  [4] Genesys AudioHook Audio Connector (requires API Key)"
     Write-Host ""
     $choice = Read-Host "Select provider [1]"
     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
@@ -188,6 +191,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             }
             azd env set TWILIO_ACCOUNT_SID $sid
             azd env set TWILIO_AUTH_TOKEN $tokenPlain
+            azd env set TELEPHONY_PROVIDER twilio
             Write-Host "Twilio configured." -ForegroundColor Green
         }
         "3" {
@@ -218,19 +222,47 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             }
             azd env set INFOBIP_API_KEY $keyPlain
             azd env set INFOBIP_API_BASE_URL $baseUrl
+            azd env set TELEPHONY_PROVIDER infobip
             Write-Host "Infobip configured." -ForegroundColor Green
         }
+        "4" {
+            Write-Host ""
+            Write-Host "Genesys AudioHook Audio Connector" -ForegroundColor Yellow
+            Write-Host "This key authenticates Genesys Cloud when it connects to your /audiohook/ws endpoint."
+            Write-Host "You define this value and configure the same key in Genesys Cloud."
+            Write-Host ""
+            $gKey = Read-Host "Enter API Key for AudioHook authentication"
+            if ([string]::IsNullOrWhiteSpace($gKey)) {
+                Write-Host "ERROR: API Key is required." -ForegroundColor Red
+                exit 1
+            }
+            azd env set GENESYS_API_KEY $gKey
+            azd env set TELEPHONY_PROVIDER genesys
+            Write-Host "Genesys AudioHook configured." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "After deployment, the post-deploy script will show your WebSocket URL and simulator link." -ForegroundColor Cyan
+        }
         default {
+            azd env set TELEPHONY_PROVIDER acs
             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green
         }
     }
 }
 else {
     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
+        azd env set TELEPHONY_PROVIDER twilio
         Write-Host "Telephony: Twilio (credentials detected)" -ForegroundColor Green
     }
     elseif (-not [string]::IsNullOrWhiteSpace($infobipKey)) {
+        azd env set TELEPHONY_PROVIDER infobip
         Write-Host "Telephony: Infobip (credentials detected)" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($genesysKey)) {
+        azd env set TELEPHONY_PROVIDER genesys
+        Write-Host "Telephony: Genesys AudioHook (credentials detected)" -ForegroundColor Green
+    }
+    else {
+        azd env set TELEPHONY_PROVIDER acs
     }
 }
 
