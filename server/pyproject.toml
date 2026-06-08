@@ -11,18 +11,25 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "quart-cors>=0.8.0",
     "azure-core>=1.39.0",
-    "azure-communication-identity>=1.5.0",
-    "aiohttp>=3.13.5",
-    "azure-eventgrid>=4.22.0",
     "azure-identity>=1.25.3",
-    "azure-communication-callautomation>=1.5.0",
+    "aiohttp>=3.13.5",
     "openai[realtime]>=2.33.0",
     "h2>=4.3.0",
     "numpy>=1.24.0",
-    "twilio>=9.10.0",
     "azure-ai-voicelive[aiohttp]>=1.1.0",
     "urllib3>=2.7.0",
     "PyJWT[crypto]>=2.8.0",
 ]
+
+[project.optional-dependencies]
+acs = [
+    "azure-communication-callautomation>=1.5.0",
+    "azure-eventgrid>=4.22.0",
+]
+twilio = [
+    "twilio>=9.10.0",
+]
+infobip = []
+genesys = []
 
 [tool.uv]

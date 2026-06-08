@@ -2,7 +2,7 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, and **Infobip**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, and **Genesys Cloud (AudioHook)**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
@@ -33,11 +33,12 @@ The solution includes:
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
+  - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
-- Easy extension to other client types such as [Audiohook](https://learn.microsoft.com/azure/ai-services/speech-service/how-to-use-audiohook)
+- Easy extension to other client types
 
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
@@ -164,8 +165,8 @@ To change the `azd` parameters from the default values, follow the steps [here](
 
     The setup wizard will then guide you through:
     - **Model selection** — choose from 12 fully managed models across Pro, Basic, and Lite tiers (or bring your own)
-    - **Telephony provider selection** — choose ACS (default), Twilio, or Infobip
-    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio or Infobip
+    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, or Genesys
+    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, or Genesys
 
     After provisioning completes, you'll see a deployment summary with your webhook endpoint(s) and next steps.
 
@@ -362,6 +363,47 @@ Dial your Infobip phone number. The call connects to the real-time voice agent p
 1. Infobip sends a `CALL_RECEIVED` webhook to `/infobip/incoming` — the server answers the call
 2. Once established, the server creates a Dialog that bridges the caller to the WebSocket endpoint
 3. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
+
+### 🎧 Genesys Cloud AudioHook (Audio Connector)
+
+[Genesys AudioHook](https://developer.genesys.cloud/devapps/audiohook) (Audio Connector) streams real-time call audio from Genesys Cloud to your deployed Container App via WebSocket. Unlike the other telephony options, Genesys does not route phone calls through this template — it forwards audio from calls already handled within Genesys Cloud to your AudioHook endpoint for AI processing.
+
+```
+Caller → PSTN → Genesys Cloud → AudioHook WebSocket → Container App → Voice Live AI
+```
+
+#### 1. Prerequisites
+
+- A [Genesys Cloud](https://www.genesys.com/genesys-cloud) organization with the Audio Connector feature enabled
+
+> During `azd up`, the setup wizard prompts for a Genesys API key and stores it securely in Azure Key Vault.
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `GENESYS_API_KEY` | A shared secret for authenticating AudioHook connections | You define this value — use the same key in both your deployment and Genesys Cloud integration settings |
+
+#### 2. Test with the Browser Simulator (No Genesys Cloud Required)
+
+After deployment, open the simulator page to test without a Genesys Cloud account:
+
+```
+https://<your-container-app-url>/genesys
+```
+
+The simulator mimics a Genesys AudioHook client in the browser — it sends your microphone audio as PCMU 8kHz and plays back the AI response. Enter the same API key you configured during setup.
+
+#### 3. Connect to Genesys Cloud (Production)
+
+1. Add an AudioHook (Audio Connector) integration in your Genesys Cloud Admin console
+2. Set the **Connection URI** to `wss://<your-container-app-url>/audiohook/ws` and the **API Key** to the same value you configured in `GENESYS_API_KEY`
+3. Assign the integration to a call flow or queue so that matching calls stream audio to your endpoint
+
+For protocol details, see the [Genesys AudioHook developer documentation](https://developer.genesys.cloud/devapps/audiohook).
+
+**How it works:**
+1. Genesys Cloud opens a WebSocket to `/audiohook/ws` and authenticates with the API key
+2. The caller's audio streams to the server, which bridges it to Azure Voice Live
+3. The AI response audio is streamed back to Genesys Cloud for the caller to hear
 
 ## Local Development
 

@@ -195,19 +195,6 @@ wheels = [
 ]
 
 [[package]]
-name = "azure-communication-identity"
-version = "1.5.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "azure-core" },
-    { name = "msrest" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/f6/9e/6cbc94f5c01406083960bea219ee9d9313ad925c894b6b5df3df1d3d51a0/azure-communication-identity-1.5.0.tar.gz", hash = "sha256:d3186403395b78066ff30313ac119693694d2da9e0c76e9ac70eaa590dcb29e8", size = 66685, upload-time = "2024-02-15T08:20:04.324Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/b1/21/9266411a36a182e235ad9ed338a071e417d01d6804747ae959c2232399b0/azure_communication_identity-1.5.0-py3-none-any.whl", hash = "sha256:dd6dc7aafc9f3707ffbbf40a45f2b4ccb5dc67f4d1545e74b083f83f9afa7a1a", size = 65601, upload-time = "2024-02-15T08:20:06.825Z" },
-]
-
-[[package]]
 name = "azure-core"
 version = "1.39.0"
 source = { registry = "https://pypi.org/simple" }
@@ -871,22 +858,6 @@ wheels = [
 ]
 
 [[package]]
-name = "msrest"
-version = "0.7.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "azure-core" },
-    { name = "certifi" },
-    { name = "isodate" },
-    { name = "requests" },
-    { name = "requests-oauthlib" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/68/77/8397c8fb8fc257d8ea0fa66f8068e073278c65f05acb17dcb22a02bfdc42/msrest-0.7.1.zip", hash = "sha256:6e7661f46f3afd88b75667b7187a92829924446c7ea1d169be8c4bb7eeb788b9", size = 175332, upload-time = "2022-06-13T22:41:25.111Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/cf/f2966a2638144491f8696c27320d5219f48a072715075d168b31d3237720/msrest-0.7.1-py3-none-any.whl", hash = "sha256:21120a810e1233e5e6cc7fe40b474eeb4ec6f757a15d7cf86702c369f9567c32", size = 85384, upload-time = "2022-06-13T22:41:22.42Z" },
-]
-
-[[package]]
 name = "multidict"
 version = "6.7.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1044,15 +1015,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ed/ad/483d9e262f4b831000062e5d8a45e342166ec8aaa1195264982bca267e62/numpy-2.4.4-cp314-cp314t-win32.whl", hash = "sha256:dddbbd259598d7240b18c9d87c56a9d2fb3b02fe266f49a7c101532e78c1d871", size = 6155500, upload-time = "2026-03-29T13:21:28.205Z" },
     { url = "https://files.pythonhosted.org/packages/c7/03/2fc4e14c7bd4ff2964b74ba90ecb8552540b6315f201df70f137faa5c589/numpy-2.4.4-cp314-cp314t-win_amd64.whl", hash = "sha256:a7164afb23be6e37ad90b2f10426149fd75aee07ca55653d2aa41e66c4ef697e", size = 12637755, upload-time = "2026-03-29T13:21:31.107Z" },
     { url = "https://files.pythonhosted.org/packages/58/78/548fb8e07b1a341746bfbecb32f2c268470f45fa028aacdbd10d9bc73aab/numpy-2.4.4-cp314-cp314t-win_arm64.whl", hash = "sha256:ba203255017337d39f89bdd58417f03c4426f12beed0440cfd933cb15f8669c7", size = 10566643, upload-time = "2026-03-29T13:21:34.339Z" },
-]
-
-[[package]]
-name = "oauthlib"
-version = "3.3.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0b/5f/19930f824ffeb0ad4372da4812c50edbd1434f678c90c2733e1188edfc63/oauthlib-3.3.1.tar.gz", hash = "sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9", size = 185918, upload-time = "2025-06-19T22:48:08.269Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/9c/92789c596b8df838baa98fa71844d84283302f7604ed565dafe5a6b5041a/oauthlib-3.3.1-py3-none-any.whl", hash = "sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1", size = 160065, upload-time = "2025-06-19T22:48:06.508Z" },
 ]
 
 [[package]]
@@ -1342,19 +1304,6 @@ wheels = [
 ]
 
 [[package]]
-name = "requests-oauthlib"
-version = "2.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "oauthlib" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/42/f2/05f29bc3913aea15eb670be136045bf5c5bbf4b99ecb839da9b422bb2c85/requests-oauthlib-2.0.0.tar.gz", hash = "sha256:b3dffaebd884d8cd778494369603a9e7b58d29111bf6b41bdc2dcd87203af4e9", size = 55650, upload-time = "2024-03-22T20:32:29.939Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/5d/63d4ae3b9daea098d5d6f5da83984853c1bbacd5dc826764b249fe119d24/requests_oauthlib-2.0.0-py2.py3-none-any.whl", hash = "sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36", size = 24179, upload-time = "2024-03-22T20:32:28.055Z" },
-]
-
-[[package]]
 name = "sniffio"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1427,10 +1376,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "azure-ai-voicelive", extra = ["aiohttp"] },
-    { name = "azure-communication-callautomation" },
-    { name = "azure-communication-identity" },
     { name = "azure-core" },
-    { name = "azure-eventgrid" },
     { name = "azure-identity" },
     { name = "h2" },
     { name = "httpx" },
@@ -1440,19 +1386,26 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "quart" },
     { name = "quart-cors" },
-    { name = "twilio" },
     { name = "urllib3" },
     { name = "websockets" },
+]
+
+[package.optional-dependencies]
+acs = [
+    { name = "azure-communication-callautomation" },
+    { name = "azure-eventgrid" },
+]
+twilio = [
+    { name = "twilio" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "azure-ai-voicelive", extras = ["aiohttp"], specifier = ">=1.1.0" },
-    { name = "azure-communication-callautomation", specifier = ">=1.5.0" },
-    { name = "azure-communication-identity", specifier = ">=1.5.0" },
+    { name = "azure-communication-callautomation", marker = "extra == 'acs'", specifier = ">=1.5.0" },
     { name = "azure-core", specifier = ">=1.39.0" },
-    { name = "azure-eventgrid", specifier = ">=4.22.0" },
+    { name = "azure-eventgrid", marker = "extra == 'acs'", specifier = ">=4.22.0" },
     { name = "azure-identity", specifier = ">=1.25.3" },
     { name = "h2", specifier = ">=4.3.0" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -1462,10 +1415,11 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "quart", specifier = ">=0.20.0" },
     { name = "quart-cors", specifier = ">=0.8.0" },
-    { name = "twilio", specifier = ">=9.10.0" },
+    { name = "twilio", marker = "extra == 'twilio'", specifier = ">=9.10.0" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
+provides-extras = ["acs", "twilio", "infobip", "genesys"]
 
 [[package]]
 name = "websockets"

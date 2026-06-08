@@ -7,6 +7,8 @@ param acsConnectionString string
 param twilioAuthToken string = ''
 @secure()
 param infobipApiKey string = ''
+@secure()
+param genesysApiKey string = ''
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: keyVaultName
@@ -53,8 +55,17 @@ resource infobipApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if
   }
 }
 
+resource genesysApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(genesysApiKey)) {
+  parent: keyVault
+  name: 'GENESYS-API-KEY'
+  properties: {
+    value: genesysApiKey
+  }
+}
+
 output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}' : ''
 output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
 output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
+output genesysApiKeyUri string = !empty(genesysApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/GENESYS-API-KEY' : ''
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
