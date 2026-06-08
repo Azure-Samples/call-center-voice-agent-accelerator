@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Pre-deploy hook — ensures TELEPHONY_PROVIDER is set based on existing credentials.
+    Pre-deploy hook — ensures TELEPHONY_PROVIDER is set and imports base image into ACR.
 #>
 
 $telephony = azd env get-value TELEPHONY_PROVIDER 2>$null
@@ -31,3 +31,4 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
         Write-Host "TELEPHONY_PROVIDER set to: acs (default)" -ForegroundColor Green
     }
 }
+

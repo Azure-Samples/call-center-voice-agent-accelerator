@@ -499,6 +499,16 @@ You can add your own ambient audio files:
 
 <br/>
 
+## Troubleshooting
+
+See the [Troubleshooting Guide](./docs/troubleshooting.md) for common deployment issues and solutions, including:
+- Docker Hub rate limits during remote builds
+- RequestConflict errors from concurrent deployments
+- Soft-deleted resource recovery
+- Required RBAC permissions
+
+<br/>
+
 ## Resources
 - [📖 Docs: Voice live overview](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live)
 - [📖 Blog: Upgrade your voice agent with Azure AI Voice Live API](https://techcommunity.microsoft.com/blog/azure-ai-foundry-blog/upgrade-your-voice-agent-with-azure-ai-voice-live-api/4458247)

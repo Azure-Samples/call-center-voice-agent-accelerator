@@ -14,6 +14,9 @@
     "modelName": {
       "value": "${AZURE_VOICE_LIVE_MODEL=gpt-4o-mini}"
     },
+    "telephonyProvider": {
+      "value": "${TELEPHONY_PROVIDER=acs}"
+    },
     "twilioAuthToken": {
       "value": "${TWILIO_AUTH_TOKEN}"
     },

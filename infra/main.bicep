@@ -34,6 +34,9 @@ param location string
 param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
+@description('The selected telephony provider')
+@allowed(['acs', 'twilio', 'infobip', 'genesys'])
+param telephonyProvider string = 'acs'
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
 param twilioAuthToken string = ''
@@ -47,10 +50,6 @@ param infobipApiBaseUrl string = ''
 param genesysApiKey string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
-
-var useTwilio = !empty(twilioAuthToken)
-var useInfobip = !empty(infobipApiKey)
-var useGenesys = !empty(genesysApiKey)
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -110,7 +109,7 @@ module aiServices 'modules/aiservices.bicep' = {
   }
 }
 
-module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip && !useGenesys) {
+module acs 'modules/acs.bicep' = if (telephonyProvider == 'acs') {
   name: 'acs-deployment'
   scope: rg
   params: {
@@ -120,7 +119,8 @@ module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip && !useGenesys) {
   }
 }
 
-var keyVaultName = take(toLower(replace(replace(replace('kv-${environmentName}-${uniqueSuffix}', ' ', ''), '--', '-'), '_', '')), 24)
+var rawKvName = take(toLower(replace(replace(replace(replace('kv-${environmentName}-${uniqueSuffix}', ' ', ''), '.', ''), '--', '-'), '_', '')), 24)
+var keyVaultName = endsWith(rawKvName, '-') ? take(rawKvName, length(rawKvName) - 1) : rawKvName
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault-deployment'
   scope: rg
@@ -129,7 +129,7 @@ module keyvault 'modules/keyvault.bicep' = {
     keyVaultName: keyVaultName
     tags: tags
     #disable-next-line BCP327
-    acsConnectionString: (!useTwilio && !useInfobip && !useGenesys) ? acs.outputs.acsConnectionString : ''
+    acsConnectionString: (telephonyProvider == 'acs') ? acs.outputs.acsConnectionString : ''
     twilioAuthToken: twilioAuthToken
     infobipApiKey: infobipApiKey
     genesysApiKey: genesysApiKey
@@ -183,6 +183,14 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/voice'] : useInfobip ? ['https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'] : useGenesys ? ['wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'] : ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
+
+// Provider endpoint mapping — add new providers here
+var providerEndpoints = {
+  acs: 'https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall'
+  twilio: 'https://${containerapp.outputs.containerAppFqdn}/voice'
+  infobip: 'https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'
+  genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
+}
+output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName

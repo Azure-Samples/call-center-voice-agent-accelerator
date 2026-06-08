@@ -53,7 +53,8 @@ resource aiServices 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
       defaultAction: 'Allow'
     }
     disableLocalAuth: disableLocalAuth
-    customSubDomainName: 'domain-${environmentName}-${uniqueSuffix}' 
+    customSubDomainName: 'domain-${environmentName}-${uniqueSuffix}'
+    restore: true
   }
 }
 

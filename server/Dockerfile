@@ -35,9 +35,8 @@ COPY static /app/static/
 ###############
 FROM python:3.12-slim-bookworm
 
-# Patch system packages and strip pip/setuptools (not needed at runtime)
+# Patch system packages and remove pip/setuptools (not needed at runtime — uv handles builds)
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
-    pip install --upgrade pip==25.3 && \
     rm -rf /usr/local/lib/python3.12/site-packages/pip* \
            /usr/local/lib/python3.12/site-packages/setuptools* \
            /usr/local/lib/python3.12/dist-packages/pip* \

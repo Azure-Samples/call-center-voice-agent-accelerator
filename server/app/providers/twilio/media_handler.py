@@ -8,7 +8,7 @@ import json
 import logging
 import time
 
-from .voicelive_media_handler import VoiceLiveMediaHandler
+from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 
