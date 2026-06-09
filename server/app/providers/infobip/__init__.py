@@ -5,6 +5,7 @@ import logging
 
 from quart import request, websocket
 
+from app.call_loop import run_call_loop
 from app.call_manager import CallManager
 from app.logging_config import new_correlation_id
 from app.provider_registry import register_provider
@@ -58,28 +59,17 @@ def register_infobip_routes(app, call_manager: CallManager):
         handler = InfobipMediaHandler(app.config, token_validator=infobip_handler.validate_ws_token)
         handler.infobip_ws = websocket
         await handler.init_websocket(websocket)
-        voicelive_task = None
         try:
-            voicelive_task = asyncio.create_task(handler.connect_voicelive())
-            while True:
-                if call_manager.is_expired(call_id):
-                    logger.warning("Call expired, disconnecting: call_id=%s", call_id)
-                    break
-                msg = await websocket.receive()
-                call_manager.touch(call_id)
-                await handler.handle_infobip_message(msg)
+            await run_call_loop(
+                call_manager=call_manager,
+                call_id=call_id,
+                ws=websocket,
+                handler=handler,
+            )
         except asyncio.CancelledError:
             logger.info("Infobip WebSocket cancelled")
         except Exception as e:
             logger.exception("Infobip WebSocket closed: %s", e)
         finally:
-            if voicelive_task:
-                voicelive_task.cancel()
-            logger.info(
-                "Infobip WebSocket ending — frames in=%d out=%d voicelive_connected=%s",
-                handler._in_frame_count,
-                handler._out_frame_count,
-                handler._voicelive_connected,
-            )
             await call_manager.release(call_id)
-            await handler._cleanup()
+            await handler.cleanup()

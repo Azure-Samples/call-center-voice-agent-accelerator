@@ -101,70 +101,73 @@ class AcsEventHandler:
     async def process_callback_events(self, raw_events: list):
         """Processes ACS callback events such as call connected, media started, etc."""
         for event in raw_events:
-            event_data = event["data"]
-            call_connection_id = event_data["callConnectionId"]
-
-            logger.info(
-                "Received Event:-> %s, Correlation Id:-> %s, CallConnectionId:-> %s",
-                event["type"],
-                event_data["correlationId"],
-                call_connection_id,
-            )
-
-            if event["type"] == "Microsoft.Communication.CallConnected":
-                properties = await self.acs_client.get_call_connection(
-                    call_connection_id
-                ).get_call_properties()
+            try:
+                event_data = event["data"]
+                call_connection_id = event_data["callConnectionId"]
 
                 logger.info(
-                    "MediaStreamingSubscription:--> %s",
-                    properties.media_streaming_subscription,
-                )
-                logger.info(
-                    "Received CallConnected event for connection id: %s",
+                    "Received Event:-> %s, Correlation Id:-> %s, CallConnectionId:-> %s",
+                    event["type"],
+                    event_data["correlationId"],
                     call_connection_id,
                 )
-                logger.info("CORRELATION ID:--> %s", event_data["correlationId"])
-                logger.info("CALL CONNECTION ID:--> %s", call_connection_id)
 
-            elif event["type"] == "Microsoft.Communication.MediaStreamingStarted":
-                update = event_data["mediaStreamingUpdate"]
-                logger.info(
-                    "Media streaming content type:--> %s", update["contentType"]
-                )
-                logger.info(
-                    "Media streaming status:--> %s", update["mediaStreamingStatus"]
-                )
-                logger.info(
-                    "Media streaming status details:--> %s",
-                    update["mediaStreamingStatusDetails"],
-                )
+                if event["type"] == "Microsoft.Communication.CallConnected":
+                    properties = await self.acs_client.get_call_connection(
+                        call_connection_id
+                    ).get_call_properties()
 
-            elif event["type"] == "Microsoft.Communication.MediaStreamingStopped":
-                update = event_data["mediaStreamingUpdate"]
-                logger.info(
-                    "Media streaming content type:--> %s", update["contentType"]
-                )
-                logger.info(
-                    "Media streaming status:--> %s", update["mediaStreamingStatus"]
-                )
-                logger.info(
-                    "Media streaming status details:--> %s",
-                    update["mediaStreamingStatusDetails"],
-                )
+                    logger.info(
+                        "MediaStreamingSubscription:--> %s",
+                        properties.media_streaming_subscription,
+                    )
+                    logger.info(
+                        "Received CallConnected event for connection id: %s",
+                        call_connection_id,
+                    )
+                    logger.info("CORRELATION ID:--> %s", event_data["correlationId"])
+                    logger.info("CALL CONNECTION ID:--> %s", call_connection_id)
 
-            elif event["type"] == "Microsoft.Communication.MediaStreamingFailed":
-                result_info = event_data["resultInformation"]
-                logger.info(
-                    "Code:-> %s, Subcode:-> %s",
-                    result_info["code"],
-                    result_info["subCode"],
-                )
-                logger.info("Message:-> %s", result_info["message"])
+                elif event["type"] == "Microsoft.Communication.MediaStreamingStarted":
+                    update = event_data["mediaStreamingUpdate"]
+                    logger.info(
+                        "Media streaming content type:--> %s", update["contentType"]
+                    )
+                    logger.info(
+                        "Media streaming status:--> %s", update["mediaStreamingStatus"]
+                    )
+                    logger.info(
+                        "Media streaming status details:--> %s",
+                        update["mediaStreamingStatusDetails"],
+                    )
 
-            elif event["type"] == "Microsoft.Communication.CallDisconnected":
-                logger.info(
-                    "CallDisconnected event received for: %s", call_connection_id
-                )
+                elif event["type"] == "Microsoft.Communication.MediaStreamingStopped":
+                    update = event_data["mediaStreamingUpdate"]
+                    logger.info(
+                        "Media streaming content type:--> %s", update["contentType"]
+                    )
+                    logger.info(
+                        "Media streaming status:--> %s", update["mediaStreamingStatus"]
+                    )
+                    logger.info(
+                        "Media streaming status details:--> %s",
+                        update["mediaStreamingStatusDetails"],
+                    )
+
+                elif event["type"] == "Microsoft.Communication.MediaStreamingFailed":
+                    result_info = event_data["resultInformation"]
+                    logger.info(
+                        "Code:-> %s, Subcode:-> %s",
+                        result_info["code"],
+                        result_info["subCode"],
+                    )
+                    logger.info("Message:-> %s", result_info["message"])
+
+                elif event["type"] == "Microsoft.Communication.CallDisconnected":
+                    logger.info(
+                        "CallDisconnected event received for: %s", call_connection_id
+                    )
+            except Exception:
+                logger.exception("Error processing ACS callback event: %s", event.get("type", "unknown"))
 
         return Response(status=200)

@@ -1,6 +1,6 @@
 """Provider registry for telephony plugins.
 
-Adding a new provider requires ONE file: app/providers/<name>_provider.py
+Adding a new provider requires a package: app/providers/<name>/__init__.py
 with a @register_provider decorator. No other files need changes.
 """
 
@@ -39,7 +39,7 @@ def register_provider(
     """Decorator to register a provider's route-registration function.
 
     Args:
-        name: Provider identifier (used as module suffix: {name}_provider.py)
+        name: Provider identifier (matches the package name: app/providers/{name}/)
         display_name: Human-readable name for logs
         detect_key: Config key that activates this provider (empty = fallback)
         required_config: Keys validated at startup

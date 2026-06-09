@@ -67,8 +67,8 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
     # AudioHook protocol message handling
     # ------------------------------------------------------------------
 
-    async def handle_message(self, message):
-        """Process an incoming Genesys AudioHook WebSocket message.
+    async def on_message(self, message):
+        """Process one incoming Genesys AudioHook WebSocket message.
 
         Binary messages = PCMU 8kHz audio frames.
         Text messages = JSON protocol messages (open, ping, close, update, pause, resume).
@@ -273,8 +273,8 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
                     else:
                         break
                 await self.genesys_ws.send(b''.join(chunks))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Genesys audio send failed: %s", e)
 
         # Convert PCMU 8kHz → PCM 16-bit 24kHz for Voice Live
         if not self._voicelive_connected:

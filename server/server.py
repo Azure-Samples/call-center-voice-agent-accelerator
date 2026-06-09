@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from quart import Quart, request, websocket
 
+from app.call_loop import run_call_loop
 from app.call_manager import CallManager
 from app.config_validator import validate_config
 from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
@@ -66,8 +67,8 @@ for _finder, _mod_name, _ispkg in pkgutil.iter_modules(_providers_pkg.__path__):
     if _ispkg:  # each provider is a package (folder with __init__.py)
         try:
             importlib.import_module(f"app.providers.{_mod_name}")
-        except ImportError:
-            pass  # SDK not installed for this provider — skip
+        except ImportError as e:
+            logger.debug("Skipping provider %s: %s", _mod_name, e)
 
 _telephony_client = detect_provider()
 
@@ -115,22 +116,20 @@ async def web_ws():
 
     handler = VoiceLiveMediaHandler(app.config)
     await handler.init_websocket(websocket)
-    asyncio.create_task(handler.connect_voicelive())
     try:
-        while True:
-            if call_manager.is_expired(call_id):
-                logger.warning("Web call expired, disconnecting: call_id=%s", call_id)
-                break
-            msg = await websocket.receive()
-            call_manager.touch(call_id)
-            await handler.handle_audio(msg)
+        await run_call_loop(
+            call_manager=call_manager,
+            call_id=call_id,
+            ws=websocket,
+            handler=handler,
+        )
     except asyncio.CancelledError:
         logger.info("Web WebSocket cancelled")
     except Exception:
         logger.exception("Web WebSocket connection closed")
     finally:
         await call_manager.release(call_id)
-        await handler._cleanup()
+        await handler.cleanup()
 
 
 @app.route("/")

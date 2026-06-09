@@ -1,5 +1,6 @@
 """Handles Twilio Media Stream WebSocket and bridges audio to Azure Voice Live API."""
 
+import asyncio
 import audioop
 import base64
 import hashlib
@@ -61,8 +62,23 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
         Returns True if authenticated, False if rejected (WebSocket already closed).
         """
         while True:
-            msg = await self.twilio_ws.receive()
-            data = json.loads(msg)
+            try:
+                msg = await asyncio.wait_for(self.twilio_ws.receive(), timeout=30)
+            except TimeoutError:
+                logger.warning("[TwilioMediaHandler] Timed out waiting for start message")
+                await self.twilio_ws.close(4408, "Timeout")
+                return False
+            except Exception:
+                logger.info("[TwilioMediaHandler] WebSocket closed before start message")
+                return False
+
+            try:
+                data = json.loads(msg)
+            except json.JSONDecodeError:
+                logger.warning("[TwilioMediaHandler] Non-JSON message before start")
+                await self.twilio_ws.close(4400, "Bad Request")
+                return False
+
             event = data.get("event")
 
             if event == "connected":
@@ -77,7 +93,7 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
                     await self.twilio_ws.close(4403, "Forbidden")
                     return False
                 # Process the start message
-                await self.handle_twilio_message(msg)
+                await self.on_message(msg)
                 return True
 
             # Unexpected message before start
@@ -98,7 +114,7 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
                 self._tts_playback_started = False
 
     async def on_transcript_done(self, transcript: str):
-        """Log only — Twilio has no transcript channel."""
+        """No-op — Twilio has no transcript channel."""
         pass
 
     # ------------------------------------------------------------------
@@ -122,14 +138,17 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
             "streamSid": self.stream_sid,
             "media": {"payload": mulaw_b64},
         }
-        await self.twilio_ws.send(json.dumps(msg))
+        try:
+            await self.twilio_ws.send(json.dumps(msg))
+        except Exception as e:
+            logger.debug("[TwilioMediaHandler] Audio send failed: %s", e)
 
     # ------------------------------------------------------------------
     # Twilio message handling
     # ------------------------------------------------------------------
 
-    async def handle_twilio_message(self, message: str):
-        """Processes an incoming Twilio WebSocket message."""
+    async def on_message(self, message: str):
+        """Process one incoming Twilio WebSocket message."""
         try:
             data = json.loads(message)
         except json.JSONDecodeError:

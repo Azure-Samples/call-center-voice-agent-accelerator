@@ -7,10 +7,9 @@ from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
-# Defaults
 DEFAULT_MAX_CONCURRENT_CALLS = 50
 DEFAULT_MAX_CALL_DURATION = 3600  # 1 hour
-DEFAULT_IDLE_TIMEOUT = 120  # 2 minutes no audio = zombie
+DEFAULT_IDLE_TIMEOUT = 120  # 2 minutes no WebSocket activity = zombie
 
 
 @dataclass
@@ -21,11 +20,10 @@ class CallSession:
     provider: str
     started_at: float = field(default_factory=time.monotonic)
     last_activity: float = field(default_factory=time.monotonic)
-    _timeout_task: asyncio.Task | None = field(default=None, repr=False)
 
 
 class CallManager:
-    """Singleton that tracks active calls and enforces limits."""
+    """Tracks active calls and enforces concurrency and timeout limits."""
 
     def __init__(
         self,
@@ -46,6 +44,11 @@ class CallManager:
     @property
     def max_concurrent(self) -> int:
         return self._max_concurrent
+
+    @property
+    def receive_timeout(self) -> int:
+        """Timeout for websocket.receive() — ensures zombie detection within one idle period."""
+        return min(self._idle_timeout, 30)
 
     async def acquire(self, call_id: str, provider: str) -> bool:
         """Try to register a new call. Returns False if at capacity."""
@@ -74,8 +77,6 @@ class CallManager:
         """Unregister a call when it ends."""
         async with self._lock:
             session = self._calls.pop(call_id, None)
-            if session and session._timeout_task:
-                session._timeout_task.cancel()
             if session:
                 duration = time.monotonic() - session.started_at
                 logger.info(
@@ -88,7 +89,7 @@ class CallManager:
                 )
 
     def touch(self, call_id: str) -> None:
-        """Update last activity timestamp for a call (call on each audio frame)."""
+        """Update last activity timestamp for a call (called on each received message)."""
         session = self._calls.get(call_id)
         if session:
             session.last_activity = time.monotonic()

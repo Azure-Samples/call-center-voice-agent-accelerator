@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Pre-deploy hook — ensures TELEPHONY_PROVIDER is set and imports base image into ACR.
+    Pre-deploy hook — ensures TELEPHONY_PROVIDER is set based on existing credentials.
 #>
 
 $telephony = azd env get-value TELEPHONY_PROVIDER 2>$null

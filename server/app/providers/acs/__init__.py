@@ -5,6 +5,7 @@ import logging
 
 from quart import request, websocket
 
+from app.call_loop import run_call_loop
 from app.call_manager import CallManager
 from app.logging_config import new_correlation_id
 from app.provider_registry import register_provider
@@ -62,18 +63,16 @@ def register_acs_routes(app, call_manager: CallManager):
         handler = ACSMediaHandler(app.config)
         await handler.init_websocket(websocket)
         try:
-            asyncio.create_task(handler.connect_voicelive())
-            while True:
-                if call_manager.is_expired(call_id):
-                    logger.warning("Call expired, disconnecting: call_id=%s", call_id)
-                    break
-                msg = await websocket.receive()
-                call_manager.touch(call_id)
-                await handler.handle_audio(msg)
+            await run_call_loop(
+                call_manager=call_manager,
+                call_id=call_id,
+                ws=websocket,
+                handler=handler,
+            )
         except asyncio.CancelledError:
             logger.info("ACS WebSocket cancelled")
         except Exception:
             logger.exception("ACS WebSocket connection closed")
         finally:
             await call_manager.release(call_id)
-            await handler._cleanup()
+            await handler.cleanup()
