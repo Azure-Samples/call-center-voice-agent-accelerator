@@ -1,0 +1,52 @@
+name: Dependency Vulnerability Scan
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # Daily at 6:00 UTC
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  scan-and-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Audit dependencies
+        id: audit
+        working-directory: server
+        run: |
+          uvx pip-audit --strict 2>&1 | tee audit-output.txt || echo "found_vulns=true" >> "$GITHUB_OUTPUT"
+
+      - name: Auto-fix vulnerabilities
+        if: steps.audit.outputs.found_vulns == 'true'
+        working-directory: server
+        run: |
+          uv lock --upgrade
+          uvx pip-audit --strict  # Verify fix
+
+      - name: Create PR if lockfile changed
+        if: steps.audit.outputs.found_vulns == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: "deps: fix Python dependency vulnerabilities"
+          title: "deps: fix Python dependency vulnerabilities"
+          body: |
+            Automated vulnerability scan found issues in Python dependencies.
+            This PR updates `uv.lock` to resolve them.
+
+            <details><summary>Audit output</summary>
+
+            ```
+            ${{ steps.audit.outputs.audit_output || 'See workflow logs for details' }}
+            ```
+            </details>
+          branch: auto/dep-security-fix
+          delete-branch: true
