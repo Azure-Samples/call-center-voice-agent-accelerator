@@ -30,6 +30,7 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
         self.auth_token = config.get("TWILIO_AUTH_TOKEN", "")
         self.twilio_ws = None
         self.stream_sid = None
+        self.call_sid = None
         self._ratecv_state_in = None
         self._ratecv_state_out = None
 
@@ -164,10 +165,11 @@ class TwilioMediaHandler(VoiceLiveMediaHandler):
             case "start":
                 self.stream_sid = data.get("streamSid")
                 start_info = data.get("start", {})
+                self.call_sid = start_info.get("callSid")
                 logger.info(
                     "[TwilioMediaHandler] Stream started: sid=%s, call=%s, format=%s",
                     self.stream_sid,
-                    start_info.get("callSid"),
+                    self.call_sid,
                     start_info.get("mediaFormat"),
                 )
 

@@ -24,12 +24,12 @@ class InfobipEventHandler:
         self.media_stream_config_id = ""
         self._answered_calls = set()
         self._pending_media_streams = {}
-        self._valid_ws_tokens = set()  # one-time tokens for WebSocket auth
+        self._valid_ws_tokens = set()
 
     def validate_ws_token(self, token: str) -> bool:
         """Validate and consume a one-time WebSocket token.
 
-        Returns True if the token is valid (and removes it to prevent reuse).
+        Returns True if the token is valid.
         """
         if token in self._valid_ws_tokens:
             self._valid_ws_tokens.discard(token)

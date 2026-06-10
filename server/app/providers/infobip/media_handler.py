@@ -144,7 +144,7 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
                 logger.warning("[InfobipMediaHandler] Invalid or missing WebSocket token — closing connection")
                 await self.infobip_ws.close(1008)  # Policy Violation
                 return
-            logger.info("[InfobipMediaHandler] WebSocket token validated successfully")
+            logger.info("[InfobipMediaHandler] WebSocket token validated")
 
         self._authenticated = True
 

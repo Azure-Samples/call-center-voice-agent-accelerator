@@ -46,6 +46,7 @@ def register_acs_routes(app, call_manager: CallManager):
     @app.route("/acs/callbacks/<context_id>", methods=["POST"])
     async def acs_event_callbacks(context_id):
         """Handles ACS event callbacks for call connection and streaming events."""
+        new_correlation_id()
         raw_events = await request.get_json()
         return await acs_handler.process_callback_events(raw_events)
 
