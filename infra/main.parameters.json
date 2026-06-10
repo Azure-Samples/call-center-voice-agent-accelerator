@@ -1,18 +1,33 @@
 {
-    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
-    "contentVersion": "1.0.0.0",
-    "parameters": {
-      "environmentName": {
-        "value": "${AZURE_ENV_NAME}"
-      },
-      "location": {
-        "value": "${AZURE_LOCATION}"
-      },
-      "principalId": {
-        "value": "${AZURE_PRINCIPAL_ID}"
-      },
-      "appExists": {
-        "value": "${SERVICE_APP_RESOURCE_EXISTS=false}"
-      }
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "location": {
+      "value": "${AZURE_LOCATION}"
+    },
+    "appExists": {
+      "value": "${SERVICE_APP_RESOURCE_EXISTS=false}"
+    },
+    "modelName": {
+      "value": "${AZURE_VOICE_LIVE_MODEL=gpt-4o-mini}"
+    },
+    "twilioAuthToken": {
+      "value": "${TWILIO_AUTH_TOKEN}"
+    },
+    "infobipApiKey": {
+      "value": "${INFOBIP_API_KEY}"
+    },
+    "infobipApiBaseUrl": {
+      "value": "${INFOBIP_API_BASE_URL}"
+    },
+    "genesysApiKey": {
+      "value": "${GENESYS_API_KEY}"
+    },
+    "debugMode": {
+      "value": "${DEBUG_MODE=false}"
     }
   }
+}

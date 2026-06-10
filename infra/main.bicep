@@ -6,21 +6,51 @@ targetScope = 'subscription'
 param environmentName string
 
 @minLength(1)
-@description('Primary location for all resources (filtered on available regions for Azure Open AI Service).')
+@description('Primary location for all resources. Regions with pre-deployed models (gpt-4o-mini): eastus2, japaneast, southeastasia, swedencentral, westus2. Other regions require BYOM. See https://learn.microsoft.com/azure/ai-services/speech-service/regions?tabs=voice-live')
 @allowed([
+  'australiaeast'
+  'brazilsouth'
+  'canadaeast'
+  'eastus'
   'eastus2'
+  'francecentral'
+  'germanywestcentral'
+  'italynorth'
+  'japaneast'
+  'norwayeast'
+  'southafricanorth'
+  'southcentralus'
+  'southeastasia'
   'swedencentral'
+  'switzerlandnorth'
+  'uksouth'
+  'westeurope'
+  'westus'
+  'westus2'
+  'westus3'
 ])
 param location string
 
-var abbrs = loadJsonContent('./abbreviations.json')
-param useApplicationInsights bool = true
-param useContainerRegistry bool = true
 param appExists bool
 @description('The OpenAI model name')
-param modelName string = ' gpt-4o-mini'
-@description('Id of the user or app to assign application roles. If ommited will be generated from the user assigned identity.')
-param principalId string = ''
+param modelName string = 'gpt-4o-mini'
+@secure()
+@description('Twilio Auth Token for webhook signature validation')
+param twilioAuthToken string = ''
+@secure()
+@description('Infobip API Key for voice call handling')
+param infobipApiKey string = ''
+@description('Infobip API Base URL (e.g. https://xxxxx.api.infobip.com)')
+param infobipApiBaseUrl string = ''
+@secure()
+@description('Genesys AudioHook API Key for Audio Connector authentication')
+param genesysApiKey string = ''
+@description('Enable debug mode for verbose logging in the container app')
+param debugMode bool = false
+
+var useTwilio = !empty(twilioAuthToken)
+var useInfobip = !empty(infobipApiKey)
+var useGenesys = !empty(genesysApiKey)
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -43,7 +73,7 @@ module appIdentity './modules/identity.bicep' = {
   }
 }
 
-var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
 var logAnalyticsName = take('log-${sanitizedEnvName}-${uniqueSuffix}', 63)
 var appInsightsName = take('insights-${sanitizedEnvName}-${uniqueSuffix}', 63)
 module monitoring 'modules/monitoring/monitor.bicep' = {
@@ -61,12 +91,10 @@ module registry 'modules/containerregistry.bicep' = {
   scope: rg
   params: {
     location: location
-    environmentName: environmentName
     uniqueSuffix: uniqueSuffix
     identityName: appIdentity.outputs.name
     tags: tags
   }
-  dependsOn: [ appIdentity ]
 }
 
 
@@ -74,15 +102,15 @@ module aiServices 'modules/aiservices.bicep' = {
   name: 'ai-foundry-deployment'
   scope: rg
   params: {
+    location: location
     environmentName: environmentName
     uniqueSuffix: uniqueSuffix
     identityId: appIdentity.outputs.identityId
     tags: tags
   }
-  dependsOn: [ appIdentity ]
 }
 
-module acs 'modules/acs.bicep' = {
+module acs 'modules/acs.bicep' = if (!useTwilio && !useInfobip && !useGenesys) {
   name: 'acs-deployment'
   scope: rg
   params: {
@@ -92,18 +120,20 @@ module acs 'modules/acs.bicep' = {
   }
 }
 
-var keyVaultName = toLower(replace('kv-${environmentName}-${uniqueSuffix}', '_', '-'))
-var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
+var keyVaultName = take(toLower(replace(replace(replace('kv-${environmentName}-${uniqueSuffix}', ' ', ''), '--', '-'), '_', '')), 24)
 module keyvault 'modules/keyvault.bicep' = {
   name: 'keyvault-deployment'
   scope: rg
   params: {
     location: location
-    keyVaultName: sanitizedKeyVaultName
+    keyVaultName: keyVaultName
     tags: tags
-    acsConnectionString: acs.outputs.acsConnectionString
+    #disable-next-line BCP327
+    acsConnectionString: (!useTwilio && !useInfobip && !useGenesys) ? acs.outputs.acsConnectionString : ''
+    twilioAuthToken: twilioAuthToken
+    infobipApiKey: infobipApiKey
+    genesysApiKey: genesysApiKey
   }
-  dependsOn: [ appIdentity, acs ]
 }
 
 // Add role assignments 
@@ -113,9 +143,9 @@ module RoleAssignments 'modules/roleassignments.bicep' = {
   params: {
     identityPrincipalId: appIdentity.outputs.principalId
     aiServicesId: aiServices.outputs.aiServicesId
-    keyVaultName: sanitizedKeyVaultName
+    keyVaultName: keyVaultName
   }
-  dependsOn: [ keyvault, appIdentity ] 
+  dependsOn: [ keyvault ]
 }
 
 module containerapp 'modules/containerapp.bicep' = {
@@ -133,10 +163,15 @@ module containerapp 'modules/containerapp.bicep' = {
     aiServicesEndpoint: aiServices.outputs.aiServicesEndpoint
     modelDeploymentName: modelName
     acsConnectionStringSecretUri: keyvault.outputs.acsConnectionStringUri
+    twilioAuthTokenSecretUri: keyvault.outputs.twilioAuthTokenUri
+    infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
+    infobipApiBaseUrl: infobipApiBaseUrl
+    genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
     logAnalyticsWorkspaceName: logAnalyticsName
+    debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }
-  dependsOn: [keyvault, RoleAssignments]
+  dependsOn: [RoleAssignments]
 }
 
 
@@ -148,6 +183,6 @@ output AZURE_USER_ASSIGNED_IDENTITY_ID string = appIdentity.outputs.identityId
 output AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID string = appIdentity.outputs.clientId
 
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = registry.outputs.loginServer
-output SERVICE_API_ENDPOINTS array = ['${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
+output SERVICE_API_ENDPOINTS array = useTwilio ? ['https://${containerapp.outputs.containerAppFqdn}/voice'] : useInfobip ? ['https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'] : useGenesys ? ['wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'] : ['https://${containerapp.outputs.containerAppFqdn}/acs/incomingcall']
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
 output AZURE_VOICE_LIVE_MODEL string = modelName

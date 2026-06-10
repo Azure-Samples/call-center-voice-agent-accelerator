@@ -98,7 +98,7 @@ class AcsEventHandler:
 
         return Response(status=400)
 
-    async def process_callback_events(self, context_id: str, raw_events: list, config):
+    async def process_callback_events(self, raw_events: list):
         """Processes ACS callback events such as call connected, media started, etc."""
         for event in raw_events:
             event_data = event["data"]

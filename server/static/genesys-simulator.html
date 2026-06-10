@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Genesys AudioHook Simulator</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 2rem;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    h1 { color: #ff6b35; margin-bottom: 0.5rem; }
+    .subtitle { color: #aaa; margin-bottom: 2rem; }
+    .panel {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid #0f3460;
+    }
+    .panel h2 { color: #4fc3f7; margin-top: 0; font-size: 1.1rem; }
+    label { display: block; margin-bottom: 0.3rem; color: #ccc; font-size: 0.9rem; }
+    input, select {
+      width: 100%;
+      padding: 0.5rem;
+      margin-bottom: 1rem;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      background: #0a1628;
+      color: #e0e0e0;
+      font-family: monospace;
+      box-sizing: border-box;
+    }
+    .controls { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+    button {
+      padding: 0.7rem 1.5rem;
+      font-size: 0.95rem;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    #connectBtn { background: #4caf50; color: white; }
+    #connectBtn:hover { background: #388e3c; }
+    #connectBtn:disabled { background: #555; cursor: not-allowed; }
+    #disconnectBtn { background: #f44336; color: white; }
+    #disconnectBtn:disabled { background: #555; cursor: not-allowed; }
+    #statusIndicator {
+      display: inline-block;
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #666;
+      margin-right: 0.5rem;
+      vertical-align: middle;
+    }
+    #statusIndicator.connected { background: #4caf50; }
+    #statusIndicator.connecting { background: #ff9800; }
+    #statusIndicator.error { background: #f44336; }
+    #log {
+      background: #0a1628;
+      border: 1px solid #0f3460;
+      border-radius: 4px;
+      padding: 1rem;
+      height: 300px;
+      overflow-y: auto;
+      font-family: 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.8rem;
+      line-height: 1.5;
+    }
+    .log-send { color: #81c784; }
+    .log-recv { color: #64b5f6; }
+    .log-info { color: #ffb74d; }
+    .log-error { color: #ef5350; }
+    .log-audio { color: #888; }
+    .row { display: flex; gap: 1rem; }
+    .row > * { flex: 1; }
+    @media (max-width: 768px) { .row { flex-direction: column; } }
+  </style>
+</head>
+<body>
+  <h1>🎧 Genesys AudioHook Client Simulator</h1>
+  <div class="subtitle">
+    Simulates a Genesys Cloud AudioHook Audio Connector client connecting to your server.
+    Uses your microphone as the "caller" audio.
+  </div>
+
+  <div class="row">
+    <div class="panel">
+      <h2>Connection Settings</h2>
+      <label for="apiKey">API Key (X-API-KEY header)</label>
+      <input type="password" id="apiKey" value="my-genesys-test-key" />
+      <label for="wsUrl">WebSocket URL</label>
+      <input type="text" id="wsUrl" />
+      <label for="orgId">Organization ID</label>
+      <input type="text" id="orgId" placeholder="your-genesys-org-id" />
+      <label for="ani">Caller ANI</label>
+      <input type="text" id="ani" value="+1-555-555-1234" />
+    </div>
+    <div class="panel">
+      <h2>Audio Settings</h2>
+      <label>Media Format</label>
+      <input type="text" value="PCMU (μ-law 8kHz)" readonly style="background:#2a2a2a;color:#888;cursor:default;" />
+      <label>Channels</label>
+      <input type="text" value="external only" readonly style="background:#2a2a2a;color:#888;cursor:default;" />
+      <p style="color:#888;font-size:0.85rem;margin-top:0.5rem;">
+        Audio Connector: server receives external channel only and can send audio back.
+      </p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2><span id="statusIndicator"></span> Session Control</h2>
+    <div class="controls">
+      <button id="connectBtn" onclick="connectSession()">Connect & Start Call</button>
+      <button id="disconnectBtn" onclick="disconnectSession()" disabled>End Call</button>
+    </div>
+    <div id="statusText" style="color:#aaa;font-size:0.9rem;">Idle</div>
+  </div>
+
+  <div class="panel">
+    <h2>Protocol Log</h2>
+    <div id="log"></div>
+  </div>
+
+  <script>
+    // Initialize default WebSocket URL based on current page
+    const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
+    document.getElementById("wsUrl").value = `${wsProto}://${window.location.host}/audiohook/ws`;
+
+    let socket = null;
+    let audioContext = null;
+    let mediaStream = null;
+    let scriptProcessor = null;
+    let source = null;
+    let sessionId = crypto.randomUUID();
+    let clientSeq = 0;
+    let serverSeq = 0;
+    let audioFramesSent = 0;
+    let audioFramesRecv = 0;
+    let pingInterval = null;
+    let workletNode = null;
+
+    function log(msg, cls = "log-info") {
+      const el = document.getElementById("log");
+      const ts = new Date().toISOString().substring(11, 23);
+      const line = document.createElement("div");
+      line.className = cls;
+      line.textContent = `[${ts}] ${msg}`;
+      el.appendChild(line);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setStatus(state, text) {
+      const indicator = document.getElementById("statusIndicator");
+      indicator.className = state;
+      document.getElementById("statusText").textContent = text;
+    }
+
+    // μ-law encoding (PCM 16-bit → μ-law 8-bit)
+    function linearToUlaw(sample) {
+      const BIAS = 0x84;
+      const CLIP = 32635;
+      let sign = (sample >> 8) & 0x80;
+      if (sign !== 0) sample = -sample;
+      if (sample > CLIP) sample = CLIP;
+      sample += BIAS;
+      let exponent = 7;
+      for (let expMask = 0x4000; (sample & expMask) === 0 && exponent > 0; exponent--, expMask >>= 1) {}
+      let mantissa = (sample >> (exponent + 3)) & 0x0F;
+      let ulawByte = ~(sign | (exponent << 4) | mantissa) & 0xFF;
+      return ulawByte;
+    }
+
+    // μ-law decoding (μ-law 8-bit → PCM 16-bit)
+    function ulawToLinear(ulawByte) {
+      ulawByte = ~ulawByte & 0xFF;
+      let sign = ulawByte & 0x80;
+      let exponent = (ulawByte >> 4) & 0x07;
+      let mantissa = ulawByte & 0x0F;
+      let sample = ((mantissa << 3) + 0x84) << exponent;
+      sample -= 0x84;
+      return sign !== 0 ? -sample : sample;
+    }
+
+    function float32ToUlaw(float32Array) {
+      const ulaw = new Uint8Array(float32Array.length);
+      for (let i = 0; i < float32Array.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32Array[i]));
+        const pcm16 = s < 0 ? s * 0x8000 : s * 0x7FFF;
+        ulaw[i] = linearToUlaw(Math.round(pcm16));
+      }
+      return ulaw;
+    }
+
+    function ulawToFloat32(ulawArray) {
+      const float32 = new Float32Array(ulawArray.length);
+      for (let i = 0; i < ulawArray.length; i++) {
+        const pcm16 = ulawToLinear(ulawArray[i]);
+        float32[i] = pcm16 / (pcm16 < 0 ? 0x8000 : 0x7FFF);
+      }
+      return float32;
+    }
+
+    function playUlawAudio(ulawBuffer) {
+      if (!workletNode) return;
+      const uint8 = new Uint8Array(ulawBuffer);
+      const float8k = ulawToFloat32(uint8);
+
+      // Use OfflineAudioContext for high-quality 8kHz → 24kHz resampling
+      // (browser's built-in sinc interpolation), then feed to AudioWorklet
+      const outputLen = float8k.length * 3;  // 8kHz → 24kHz = 3x
+      const offCtx = new OfflineAudioContext(1, outputLen, 24000);
+      const buf = offCtx.createBuffer(1, float8k.length, 8000);
+      buf.getChannelData(0).set(float8k);
+      const src = offCtx.createBufferSource();
+      src.buffer = buf;
+      src.connect(offCtx.destination);
+      src.start();
+      offCtx.startRendering().then(rendered => {
+        if (workletNode) {
+          workletNode.port.postMessage({ pcm: rendered.getChannelData(0) });
+        }
+      });
+    }
+
+    function stopPlayback() {
+      if (workletNode) workletNode.port.postMessage({ clear: true });
+    }
+
+    async function connectSession() {
+      const apiKey = document.getElementById("apiKey").value;
+      const wsUrl = document.getElementById("wsUrl").value;
+
+      if (!apiKey) { alert("API Key is required"); return; }
+
+      sessionId = crypto.randomUUID();
+      clientSeq = 0;
+      serverSeq = 0;
+      audioFramesSent = 0;
+      audioFramesRecv = 0;
+
+      document.getElementById("connectBtn").disabled = true;
+      document.getElementById("disconnectBtn").disabled = false;
+      setStatus("connecting", "Connecting...");
+      log("Connecting to " + wsUrl, "log-info");
+
+      // Create WebSocket with custom headers via URL params (since browser WS doesn't support custom headers)
+      // For the simulator, we'll pass the API key as a query parameter that the server also accepts
+      const urlWithAuth = wsUrl + (wsUrl.includes("?") ? "&" : "?") + "apikey=" + encodeURIComponent(apiKey);
+      socket = new WebSocket(urlWithAuth);
+      socket.binaryType = "arraybuffer";
+
+      socket.onopen = async () => {
+        log("WebSocket connected", "log-info");
+        setStatus("connected", "Connected — sending open...");
+
+        // Use 24kHz AudioContext — same as the working web app.
+        // AudioWorklet ring buffer provides smooth continuous playback.
+        audioContext = new AudioContext({ sampleRate: 24000 });
+        await audioContext.audioWorklet.addModule('/static/audio-processor.js');
+        workletNode = new AudioWorkletNode(audioContext, 'audio-processor');
+        workletNode.connect(audioContext.destination);
+
+        // Send AudioHook 'open' message
+        sendOpen();
+
+        // Start microphone capture
+        await startMicrophone();
+
+        // Start ping interval (every 5 seconds)
+        pingInterval = setInterval(sendPing, 5000);
+      };
+
+      socket.onmessage = (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          audioFramesRecv++;
+          if (audioFramesRecv === 1) log("Receiving audio from server...", "log-audio");
+          else if (audioFramesRecv % 100 === 0) log(`Audio frames received: ${audioFramesRecv}`, "log-audio");
+          playUlawAudio(event.data);
+        } else {
+          handleProtocolMessage(event.data);
+        }
+      };
+
+      socket.onclose = (event) => {
+        if (event.code === 4403) {
+          log("Authentication failed — invalid API key", "log-error");
+          setStatus("error", "Invalid API key");
+        } else if (event.code === 1006) {
+          log("Connection failed — server unreachable or rejected", "log-error");
+          setStatus("error", "Connection failed");
+        } else {
+          log(`WebSocket closed: code=${event.code}${event.reason ? ' reason=' + event.reason : ''}`, "log-info");
+        }
+        cleanup();
+      };
+
+      socket.onerror = () => {
+        // Error details are logged in onclose — just set status here
+        setStatus("error", "Connection error");
+      };
+    }
+
+    function sendOpen() {
+      clientSeq++;
+      const openMsg = {
+        version: "2",
+        type: "open",
+        seq: clientSeq,
+        serverseq: serverSeq,
+        id: sessionId,
+        position: "PT0S",
+        parameters: {
+          startTime: new Date().toISOString(),
+          organizationId: document.getElementById("orgId").value,
+          conversationId: crypto.randomUUID(),
+          participant: {
+            id: crypto.randomUUID(),
+            ani: document.getElementById("ani").value,
+            aniName: "Simulator User",
+            dnis: "+1-800-555-0100"
+          },
+          media: [
+            {
+              type: "audio",
+              format: "PCMU",
+              channels: ["external"],
+              rate: 8000
+            }
+          ],
+          language: "en-US"
+        }
+      };
+      socket.send(JSON.stringify(openMsg));
+      log(`→ open (seq=${clientSeq})`, "log-send");
+    }
+
+    function sendPing() {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      clientSeq++;
+      const pingMsg = {
+        version: "2",
+        type: "ping",
+        seq: clientSeq,
+        serverseq: serverSeq,
+        id: sessionId,
+      };
+      socket.send(JSON.stringify(pingMsg));
+    }
+
+    function sendClose() {
+      if (!socket || socket.readyState !== WebSocket.OPEN) return;
+      clientSeq++;
+      const closeMsg = {
+        version: "2",
+        type: "close",
+        seq: clientSeq,
+        serverseq: serverSeq,
+        id: sessionId,
+        parameters: {}
+      };
+      socket.send(JSON.stringify(closeMsg));
+      log(`→ close (seq=${clientSeq})`, "log-send");
+    }
+
+    function handleProtocolMessage(raw) {
+      let msg;
+      try {
+        msg = JSON.parse(raw);
+      } catch {
+        log("Invalid JSON from server", "log-error");
+        return;
+      }
+      serverSeq = msg.seq || serverSeq;
+      const type = msg.type;
+
+      switch (type) {
+        case "opened":
+          log(`← opened (media: ${JSON.stringify(msg.parameters?.media)})`, "log-recv");
+          setStatus("connected", "Session open — streaming audio");
+          break;
+        case "pong":
+          // silent — don't clutter log
+          break;
+        case "closed":
+          log("← closed", "log-recv");
+          setStatus("", "Session closed by server");
+          socket.close();
+          break;
+        case "disconnect":
+          log(`← disconnect (reason: ${msg.parameters?.reason})`, "log-recv");
+          setStatus("error", "Disconnected: " + (msg.parameters?.reason || "unknown"));
+          socket.close();
+          break;
+        case "updated":
+          log("← updated", "log-recv");
+          break;
+        case "paused":
+          log("← paused", "log-recv");
+          break;
+        case "resumed":
+          log("← resumed", "log-recv");
+          break;
+        case "event":
+          log(`← event: ${JSON.stringify(msg.parameters?.entity)}`, "log-recv");
+          break;
+        default:
+          log(`← ${type}: ${raw.substring(0, 200)}`, "log-recv");
+      }
+    }
+
+    async function startMicrophone() {
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      source = audioContext.createMediaStreamSource(mediaStream);
+      // At 24kHz sample rate, 2048 buffer = ~85ms chunks
+      scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+      // Downsample ratio: 24kHz → 8kHz = 3:1
+      const RATIO = 3;
+
+      // Simple anti-aliasing FIR filter (13 taps, cutoff ~3.5kHz at 24kHz)
+      const filterLen = 13;
+      const filter = new Float32Array(filterLen);
+      const fc = 3500 / 24000;
+      const mid = (filterLen - 1) / 2;
+      let filterSum = 0;
+      for (let i = 0; i < filterLen; i++) {
+        if (i === mid) {
+          filter[i] = 2 * Math.PI * fc;
+        } else {
+          filter[i] = Math.sin(2 * Math.PI * fc * (i - mid)) / (i - mid);
+        }
+        filter[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (filterLen - 1));
+        filterSum += filter[i];
+      }
+      for (let i = 0; i < filterLen; i++) filter[i] /= filterSum;
+
+      let prevTail = new Float32Array(filterLen - 1);
+
+      scriptProcessor.onaudioprocess = (event) => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        const input = event.inputBuffer.getChannelData(0);
+
+        // Overlap-save FIR filtering
+        const extended = new Float32Array(prevTail.length + input.length);
+        extended.set(prevTail);
+        extended.set(input, prevTail.length);
+
+        const filtered = new Float32Array(input.length);
+        for (let i = 0; i < input.length; i++) {
+          let sum = 0;
+          for (let j = 0; j < filterLen; j++) {
+            sum += extended[i + j] * filter[j];
+          }
+          filtered[i] = sum;
+        }
+        prevTail = input.slice(input.length - (filterLen - 1));
+
+        // Decimate by 3 (24kHz → 8kHz)
+        const outputLen = Math.floor(filtered.length / RATIO);
+        const downsampled = new Float32Array(outputLen);
+        for (let i = 0; i < outputLen; i++) {
+          downsampled[i] = filtered[i * RATIO];
+        }
+
+        // Encode as PCMU and send
+        const ulaw = float32ToUlaw(downsampled);
+        socket.send(ulaw.buffer);
+        audioFramesSent++;
+        if (audioFramesSent === 1) log("Streaming microphone audio...", "log-audio");
+        else if (audioFramesSent % 200 === 0) log(`Audio frames sent: ${audioFramesSent}`, "log-audio");
+      };
+
+      source.connect(scriptProcessor);
+      scriptProcessor.connect(audioContext.destination);
+    }
+
+    function disconnectSession() {
+      sendClose();
+      // Give server time to respond with 'closed', then cleanup
+      setTimeout(() => {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+          socket.close();
+        }
+      }, 2000);
+    }
+
+    function cleanup() {
+      if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+      if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
+      if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
+      stopPlayback();
+      if (workletNode) { workletNode.disconnect(); workletNode = null; }
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      document.getElementById("connectBtn").disabled = false;
+      document.getElementById("disconnectBtn").disabled = true;
+      setStatus("", "Idle");
+      log(`Session ended — sent ${audioFramesSent} frames, received ${audioFramesRecv} frames`, "log-info");
+    }
+  </script>
+</body>
+</html>

@@ -9,12 +9,20 @@ param containerRegistryName string
 param aiServicesEndpoint string
 param modelDeploymentName string
 param acsConnectionStringSecretUri string
+param twilioAuthTokenSecretUri string = ''
+param infobipApiKeySecretUri string = ''
+param infobipApiBaseUrl string = ''
+param genesysApiKeySecretUri string = ''
 param logAnalyticsWorkspaceName string
+param appInsightsConnectionString string = ''
 @description('The name of the container image')
 param imageName string = ''
+param debugMode bool = false
+@description('Enable zone redundancy for the Container App Environment')
+param zoneRedundant bool = true
 
 // Helper to sanitize environmentName for valid container app name
-var sanitizedEnvName = toLower(replace(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '[^a-zA-Z0-9-]', ''), '_', '-'))
+var sanitizedEnvName = toLower(replace(replace(replace(environmentName, ' ', '-'), '--', '-'), '_', '-'))
 var containerAppName = take('ca-${sanitizedEnvName}-${uniqueSuffix}', 32)
 var containerEnvName = take('cae-${sanitizedEnvName}-${uniqueSuffix}', 32)
 
@@ -67,20 +75,42 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
           identity: identityId
         }
       ]
-      secrets: [
-        {
-          name: 'acs-connection-string'
-          keyVaultUrl: acsConnectionStringSecretUri
+      secrets: concat(
+        !empty(acsConnectionStringSecretUri) ? [
+          {
+            name: 'acs-connection-string'
+            keyVaultUrl: acsConnectionStringSecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(twilioAuthTokenSecretUri) ? [
+          {
+            name: 'twilio-auth-token'
+            keyVaultUrl: twilioAuthTokenSecretUri
           identity: identityId
         }
-      ]
+      ] : [],
+        !empty(infobipApiKeySecretUri) ? [
+          {
+            name: 'infobip-api-key'
+            keyVaultUrl: infobipApiKeySecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(genesysApiKeySecretUri) ? [
+          {
+            name: 'genesys-api-key'
+            keyVaultUrl: genesysApiKeySecretUri
+            identity: identityId
+          }
+        ] : [])
     }
     template: {
       containers: [
         {
           name: 'main'
           image: !empty(imageName) ? imageName : 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
-          env: [
+          env: concat([
             {
               name: 'AZURE_VOICE_LIVE_ENDPOINT'
               value: aiServicesEndpoint
@@ -94,14 +124,34 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
               value: modelDeploymentName
             }
             {
+              name: 'DEBUG_MODE'
+              value: string(debugMode)
+            }
+          ], !empty(acsConnectionStringSecretUri) ? [
+            {
               name: 'ACS_CONNECTION_STRING'
               secretRef: 'acs-connection-string'
             }
+          ] : [], !empty(twilioAuthTokenSecretUri) ? [
             {
-              name: 'DEBUG_MODE'
-              value: 'true'
+              name: 'TWILIO_AUTH_TOKEN'
+              secretRef: 'twilio-auth-token'
             }
-          ]
+          ] : [], !empty(infobipApiKeySecretUri) ? [
+            {
+              name: 'INFOBIP_API_KEY'
+              secretRef: 'infobip-api-key'
+            }
+            {
+              name: 'INFOBIP_API_BASE_URL'
+              value: infobipApiBaseUrl
+            }
+          ] : [], !empty(genesysApiKeySecretUri) ? [
+            {
+              name: 'GENESYS_API_KEY'
+              secretRef: 'genesys-api-key'
+            }
+          ] : [])
           resources: {
             cpu: json('2.0')
             memory: '4.0Gi'

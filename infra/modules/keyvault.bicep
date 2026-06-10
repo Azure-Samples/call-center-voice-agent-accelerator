@@ -3,11 +3,15 @@ param keyVaultName string
 param tags object
 @secure()
 param acsConnectionString string
-
-var sanitizedKeyVaultName = take(toLower(replace(replace(replace(replace(keyVaultName, '--', '-'), '_', '-'), '[^a-zA-Z0-9-]', ''), '-$', '')), 24)
+@secure()
+param twilioAuthToken string = ''
+@secure()
+param infobipApiKey string = ''
+@secure()
+param genesysApiKey string = ''
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
-  name: sanitizedKeyVaultName
+  name: keyVaultName
   location: location
   tags: tags
   properties: {
@@ -25,7 +29,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
 }
 
 
-resource acsConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+resource acsConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(acsConnectionString)) {
   parent: keyVault
   name: 'ACS-CONNECTION-STRING'
   properties: {
@@ -35,6 +39,33 @@ resource acsConnectionStringSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01
 
 var keyVaultDnsSuffix = environment().suffixes.keyvaultDns
 
-output acsConnectionStringUri string = 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}'
+resource twilioAuthTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(twilioAuthToken)) {
+  parent: keyVault
+  name: 'TWILIO-AUTH-TOKEN'
+  properties: {
+    value: twilioAuthToken
+  }
+}
+
+resource infobipApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(infobipApiKey)) {
+  parent: keyVault
+  name: 'INFOBIP-API-KEY'
+  properties: {
+    value: infobipApiKey
+  }
+}
+
+resource genesysApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(genesysApiKey)) {
+  parent: keyVault
+  name: 'GENESYS-API-KEY'
+  properties: {
+    value: genesysApiKey
+  }
+}
+
+output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}' : ''
+output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
+output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
+output genesysApiKeyUri string = !empty(genesysApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/GENESYS-API-KEY' : ''
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
