@@ -16,7 +16,7 @@ import json
 import logging
 import uuid
 
-from .voicelive_media_handler import VoiceLiveMediaHandler
+from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         self.api_key = config.get("GENESYS_API_KEY", "")
         self.genesys_ws = None
         self._session_id = None
+        self._conversation_id = None
         self._client_seq = 0  # last seq received from client
         self._server_seq = 0  # our outgoing seq counter
         self._authenticated = False
@@ -67,8 +68,8 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
     # AudioHook protocol message handling
     # ------------------------------------------------------------------
 
-    async def handle_message(self, message):
-        """Process an incoming Genesys AudioHook WebSocket message.
+    async def on_message(self, message):
+        """Process one incoming Genesys AudioHook WebSocket message.
 
         Binary messages = PCMU 8kHz audio frames.
         Text messages = JSON protocol messages (open, ping, close, update, pause, resume).
@@ -109,11 +110,11 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         params = data.get("parameters", {})
         media_offers = params.get("media", [])
         participant = params.get("participant", {})
-        conversation_id = params.get("conversationId", "")
+        self._conversation_id = params.get("conversationId", "")
 
         logger.info(
             "[GenesysHandler] Open: session=%s conversation=%s participant=%s",
-            self._session_id, conversation_id,
+            self._session_id, self._conversation_id,
             participant.get("ani", "unknown"),
         )
 
@@ -273,8 +274,8 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
                     else:
                         break
                 await self.genesys_ws.send(b''.join(chunks))
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Genesys audio send failed: %s", e)
 
         # Convert PCMU 8kHz → PCM 16-bit 24kHz for Voice Live
         if not self._voicelive_connected:

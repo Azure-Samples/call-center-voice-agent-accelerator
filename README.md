@@ -13,7 +13,7 @@ Alternatively, telephony integration is supported through third-party providers,
 
 <div align="center">
   
-[**Features**](#features) \| [**Getting Started**](#getting-started) \| [**Testing the Agent**](#testing-the-agent) \| [**Local Development**](#local-development) \| [**Resources**](#resources)
+[**Features**](#features) \| [**Getting Started**](#getting-started) \| [**Testing the Agent**](#testing-the-agent) \| [**Local Development**](#local-development) \| [**Debugging Calls**](#debugging-calls) \| [**Production Readiness**](#production-readiness) \| [**Resources**](#resources)
 
 </div>
 
@@ -496,6 +496,41 @@ You can add your own ambient audio files:
    ```
 
 4. Set `AMBIENT_PRESET=my_custom` in your `.env` file
+
+<br/>
+
+## Troubleshooting
+
+See the [Troubleshooting Guide](./docs/troubleshooting.md) for common deployment issues and solutions, including:
+- Docker Hub rate limits during remote builds
+- RequestConflict errors from concurrent deployments
+- Soft-deleted resource recovery
+- Required RBAC permissions
+
+<br/>
+
+## Debugging Calls
+
+Every log line includes a `cid` — a unique ID generated when a call arrives. Filter by `cid` to see the full lifecycle of one call:
+
+```
+2026-06-09 12:00:01 INFO [app.server] [cid=a1b2c3d4e5f6] Incoming Twilio Media Stream WebSocket connection
+2026-06-09 12:00:01 INFO [app.twilio] [cid=a1b2c3d4e5f6] Stream started: sid=MZ123, call=CA456
+2026-06-09 12:00:02 INFO [app.voicelive] [cid=a1b2c3d4e5f6] Voice Live session connected
+2026-06-09 12:00:30 INFO [app.server] [cid=a1b2c3d4e5f6] Call ended normally
+```
+
+**Local:** logs print to the terminal where you run the server.
+
+**Deployed:** Azure Portal → Container Apps → your app → Log stream (live), or query `ContainerAppConsoleLogs_CL` in Log Analytics for historical search.
+
+Provider-native IDs (Twilio call SID, ACS call connection ID, Genesys conversation ID, Infobip call ID) appear in the log messages. Use them to cross-reference with your provider's dashboard.
+
+<br/>
+
+## Production Readiness
+
+Before using this accelerator for production traffic, review the [Production Readiness Guide](./docs/production-readiness.md). It covers design changes to consider for scaling, shared state, WebSocket lifecycle, provider-specific reliability, observability, security, privacy, and multi-replica deployments.
 
 <br/>
 

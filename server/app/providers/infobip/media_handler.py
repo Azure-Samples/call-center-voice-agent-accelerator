@@ -10,7 +10,7 @@ import collections
 import json
 import logging
 
-from .voicelive_media_handler import VoiceLiveMediaHandler
+from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
         self._out_buffer.clear()
 
     async def on_transcript_done(self, transcript: str):
-        """Log only — Infobip has no transcript channel."""
+        """No-op — Infobip has no transcript channel."""
         pass
 
     # ------------------------------------------------------------------
@@ -58,7 +58,7 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
         """Buffer PCM audio from Voice Live (24kHz) for paced delivery to Infobip.
 
         Splits into 960-byte frames and queues them. Frames are sent one-per-incoming-frame
-        in handle_infobip_message, giving us real-time pacing and barge-in support.
+        in on_message, giving us real-time pacing and barge-in support.
         """
         self._out_frame_count += 1
         if self._out_frame_count == 1:
@@ -81,8 +81,8 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
     # Infobip message handling
     # ------------------------------------------------------------------
 
-    async def handle_infobip_message(self, message):
-        """Processes an incoming Infobip WebSocket message.
+    async def on_message(self, message):
+        """Process one incoming Infobip WebSocket message.
 
         Binary messages = raw PCM 24kHz audio.
         Text messages = JSON (websocket:connected, websocket:dtmf).
@@ -103,8 +103,8 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
             try:
                 frame = self._out_buffer.popleft() if self._out_buffer else self._silence_frame
                 await self.infobip_ws.send(frame)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug("Infobip audio send failed: %s", e)
 
             # Forward caller audio to Voice Live (skip if not connected yet)
             if not self._voicelive_connected:
@@ -144,7 +144,7 @@ class InfobipMediaHandler(VoiceLiveMediaHandler):
                 logger.warning("[InfobipMediaHandler] Invalid or missing WebSocket token — closing connection")
                 await self.infobip_ws.close(1008)  # Policy Violation
                 return
-            logger.info("[InfobipMediaHandler] WebSocket token validated successfully")
+            logger.info("[InfobipMediaHandler] WebSocket token validated")
 
         self._authenticated = True
 

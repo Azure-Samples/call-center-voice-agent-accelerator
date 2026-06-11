@@ -4,7 +4,7 @@ import base64
 import json
 import logging
 
-from .voicelive_media_handler import DEFAULT_CHUNK_SIZE, VoiceLiveMediaHandler
+from app.handler.voicelive_media_handler import DEFAULT_CHUNK_SIZE, VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 

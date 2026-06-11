@@ -2,7 +2,7 @@
 
 Provides the shared Voice Live connection, event processing, web client
 audio handling with ambient mixing, and cleanup logic. Telephony subclasses
-override hooks and handle_audio() to implement protocol-specific behavior.
+override on_message() and hook methods to implement protocol-specific behavior.
 """
 
 import asyncio
@@ -44,8 +44,8 @@ class VoiceLiveMediaHandler:
 
     Uses the azure-ai-voicelive SDK for typed session config, event handling,
     and audio streaming. Provides web client audio handling (raw PCM + ambient
-    mixing) by default. Telephony subclasses (ACS, Twilio) override hooks for
-    their specific protocols.
+    mixing) by default. Telephony subclasses override on_message() and hooks
+    for their specific protocols.
     """
 
     def __init__(self, config):
@@ -274,6 +274,10 @@ class VoiceLiveMediaHandler:
         """
         return data, len(data)
 
+    async def on_message(self, msg):
+        """Process one incoming WebSocket message. Override in subclasses for protocol handling."""
+        await self.handle_audio(msg)
+
     async def handle_audio(self, data):
         """Process inbound audio: convert, mix ambient, forward to Voice Live."""
         pcm_bytes, chunk_size = self._receive_audio_from_client(data)
@@ -342,7 +346,7 @@ class VoiceLiveMediaHandler:
     # Cleanup
     # ------------------------------------------------------------------
 
-    async def _cleanup(self):
+    async def cleanup(self):
         """Cancel background tasks and close the Voice Live connection."""
         if self._receiver_task:
             self._receiver_task.cancel()

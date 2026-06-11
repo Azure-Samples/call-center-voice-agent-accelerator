@@ -31,3 +31,4 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
         Write-Host "TELEPHONY_PROVIDER set to: acs (default)" -ForegroundColor Green
     }
 }
+

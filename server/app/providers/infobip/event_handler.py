@@ -24,12 +24,12 @@ class InfobipEventHandler:
         self.media_stream_config_id = ""
         self._answered_calls = set()
         self._pending_media_streams = {}
-        self._valid_ws_tokens = set()  # one-time tokens for WebSocket auth
+        self._valid_ws_tokens = set()
 
     def validate_ws_token(self, token: str) -> bool:
         """Validate and consume a one-time WebSocket token.
 
-        Returns True if the token is valid (and removes it to prevent reuse).
+        Returns True if the token is valid.
         """
         if token in self._valid_ws_tokens:
             self._valid_ws_tokens.discard(token)
@@ -96,18 +96,22 @@ class InfobipEventHandler:
         url = self._build_url(self.api_base_url, f"/calls/1/calls/{call_id}/answer")
         logger.info("[InfobipEventHandler] Answering call: %s", url)
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self._headers(), json={}) as resp:
-                if resp.status in (200, 201):
-                    logger.info("[InfobipEventHandler] Call answered: callId=%s", call_id)
-                    return True
-                else:
-                    body = await resp.text()
-                    logger.error(
-                        "[InfobipEventHandler] Failed to answer call: status=%s, body=%s",
-                        resp.status, body,
-                    )
-                    return False
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=self._headers(), json={}) as resp:
+                    if resp.status in (200, 201):
+                        logger.info("[InfobipEventHandler] Call answered: callId=%s", call_id)
+                        return True
+                    else:
+                        body = await resp.text()
+                        logger.error(
+                            "[InfobipEventHandler] Failed to answer call: status=%s, body=%s",
+                            resp.status, body,
+                        )
+                        return False
+        except (aiohttp.ClientError, TimeoutError):
+            logger.exception("[InfobipEventHandler] Network error answering call: %s", call_id)
+            return False
 
     async def _create_dialog(self, call_id: str, api_base: str = None) -> bool:
         """Create a Dialog to bridge the call to a WebSocket endpoint."""
@@ -135,21 +139,25 @@ class InfobipEventHandler:
             call_id, self.media_stream_config_id,
         )
 
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, headers=self._headers(), json=payload) as resp:
-                body = await resp.text()
-                if resp.status in (200, 201):
-                    logger.info(
-                        "[InfobipEventHandler] Dialog created: callId=%s, response=%s",
-                        call_id, body,
-                    )
-                    return True
-                else:
-                    logger.error(
-                        "[InfobipEventHandler] Failed to create dialog: status=%s, body=%s",
-                        resp.status, body,
-                    )
-                    return False
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=self._headers(), json=payload) as resp:
+                    body = await resp.text()
+                    if resp.status in (200, 201):
+                        logger.info(
+                            "[InfobipEventHandler] Dialog created: callId=%s, response=%s",
+                            call_id, body,
+                        )
+                        return True
+                    else:
+                        logger.error(
+                            "[InfobipEventHandler] Failed to create dialog: status=%s, body=%s",
+                            resp.status, body,
+                        )
+                        return False
+        except (aiohttp.ClientError, TimeoutError):
+            logger.exception("[InfobipEventHandler] Network error creating dialog: %s", call_id)
+            return False
 
     async def handle_incoming_call(self, request_data: dict, host_url: str) -> Response:
         """Handle all Infobip call webhooks (incoming + state changes).
