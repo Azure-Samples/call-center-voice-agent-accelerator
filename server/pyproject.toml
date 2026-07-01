@@ -29,6 +29,9 @@ acs = [
 twilio = [
     "twilio>=9.10.0",
 ]
+plivo = [
+    "plivo>=4.61.0",
+]
 infobip = []
 genesys = []
 

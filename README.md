@@ -2,13 +2,13 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, and **Genesys Cloud (AudioHook)**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Plivo**, **Infobip**, and **Genesys Cloud (AudioHook)**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams) and [Infobip](https://www.infobip.com/docs/voice-and-video/calls).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Plivo](https://www.plivo.com/docs/voice/xml/audio-streaming), and [Infobip](https://www.infobip.com/docs/voice-and-video/calls).
 
 
 <div align="center">
@@ -32,6 +32,7 @@ The solution includes:
   - **Web browser** — microphone/speaker via WebSocket (always available, great for testing)
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
+  - **Plivo** — PSTN via Plivo Audio Streaming with webhook signature validation
   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
 
@@ -311,6 +312,45 @@ Dial your Twilio phone number. The call connects to the real-time voice agent po
 1. Twilio sends a request to `/voice` — the server validates it and returns TwiML to start a media stream
 2. Twilio opens a WebSocket to `/twilio/ws` — the server verifies the embedded token, then bridges audio to Azure Voice Live
 3. The AI agent hears the caller, generates a response, and audio is streamed back through the same connection
+
+### 📞 Telephony with Plivo Client (Call Center Scenario)
+
+Inbound calls are handled via [Plivo Audio Streaming](https://www.plivo.com/docs/voice/xml/audio-streaming) — the server validates the request, returns Plivo XML that opens a bidirectional audio stream, and bridges the caller's audio to Azure Voice Live over a real-time WebSocket.
+
+#### 1. Prerequisites
+
+- A [Plivo account](https://www.plivo.com/)
+- A phone number purchased in the [Plivo Console](https://cx.plivo.com/)
+
+> During `azd up`, the setup wizard prompts for your Plivo Auth Token and stores it securely in Azure Key Vault.
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `PLIVO_AUTH_TOKEN` | Your Plivo Auth Token, used to validate webhook signatures (`X-Plivo-Signature-V3`) | [Plivo Console](https://cx.plivo.com/) → Account → Keys & Credentials |
+
+#### 2. Application / Webhook (Automatic)
+
+The Plivo Application is **configured automatically** by the post-deploy script during `azd up`. It sets the Application's Answer URL to `https://<your-container-app-url>/plivo/answer` and assigns it to your phone number.
+
+<details>
+<summary>Manual setup (if needed)</summary>
+
+1. In the [Plivo Console](https://cx.plivo.com/), go to **Voice → Applications** and create (or edit) an application.
+2. Set:
+   - **Answer URL:** `https://<your-container-app-url>/plivo/answer`
+   - **Answer Method:** `POST`
+3. Save, then go to **Phone Numbers**, open your number, and assign this application to it.
+
+</details>
+
+#### 3. Call the Agent
+
+Dial your Plivo phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
+
+**How it works:**
+1. Plivo sends a request to `/plivo/answer` — the server validates the `X-Plivo-Signature-V3` signature and returns XML with a `<Stream>` element pointing at `wss://<host>/plivo/ws` (`bidirectional="true"`, `contentType="audio/x-l16;rate=16000"`)
+2. Plivo opens a WebSocket to `/plivo/ws` and sends a `start` event — the server captures the stream metadata, then bridges audio to Azure Voice Live
+3. The AI agent hears the caller (PCM resampled 16kHz→24kHz), generates a response, and audio is streamed back as `playAudio` events (resampled 24kHz→16kHz); barge-in clears buffered playback via a `clearAudio` event
 
 ### 📞 Telephony with Infobip Client (Call Center Scenario)
 
