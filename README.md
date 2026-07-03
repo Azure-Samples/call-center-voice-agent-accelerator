@@ -348,9 +348,9 @@ The Plivo Application is **configured automatically** by the post-deploy script 
 Dial your Plivo phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
 
 **How it works:**
-1. Plivo sends a request to `/plivo/answer` — the server validates the `X-Plivo-Signature-V3` signature and returns XML with a `<Stream>` element pointing at `wss://<host>/plivo/ws` (`bidirectional="true"`, `contentType="audio/x-l16;rate=16000"`)
+1. Plivo sends a request to `/plivo/answer` — the server validates the `X-Plivo-Signature-V3` signature and returns XML with a `<Stream>` element pointing at `wss://<host>/plivo/ws` (`bidirectional="true"`, `contentType="audio/x-l16;rate=8000"`)
 2. Plivo opens a WebSocket to `/plivo/ws` and sends a `start` event — the server captures the stream metadata, then bridges audio to Azure Voice Live
-3. The AI agent hears the caller (PCM resampled 16kHz→24kHz), generates a response, and audio is streamed back as `playAudio` events (resampled 24kHz→16kHz); barge-in clears buffered playback via a `clearAudio` event
+3. The AI agent hears the caller (PCM resampled 8kHz→24kHz), generates a response, and audio is streamed back as `playAudio` events (resampled 24kHz→8kHz); barge-in clears buffered playback via a `clearAudio` event
 
 ### 📞 Telephony with Infobip Client (Call Center Scenario)
 
