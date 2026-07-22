@@ -320,13 +320,13 @@ Inbound calls are handled via [Plivo Audio Streaming](https://www.plivo.com/docs
 #### 1. Prerequisites
 
 - A [Plivo account](https://www.plivo.com/)
-- A phone number purchased in the [Plivo Console](https://cx.plivo.com/)
+- A phone number purchased in the [Plivo Console](https://cx.plivo.com/?utm_source=github&utm_medium=oss&utm_campaign=azure-call-center)
 
 > During `azd up`, the setup wizard prompts for your Plivo Auth Token and stores it securely in Azure Key Vault.
 
 | Variable | Description | Where to find it |
 |----------|-------------|------------------|
-| `PLIVO_AUTH_TOKEN` | Your Plivo Auth Token, used to validate webhook signatures (`X-Plivo-Signature-V3`) | [Plivo Console](https://cx.plivo.com/) → Account → Keys & Credentials |
+| `PLIVO_AUTH_TOKEN` | Your Plivo Auth Token, used to validate webhook signatures (`X-Plivo-Signature-V3`) | [Plivo Console](https://cx.plivo.com/?utm_source=github&utm_medium=oss&utm_campaign=azure-call-center) → Account → Keys & Credentials |
 
 #### 2. Application / Webhook (Automatic)
 
@@ -335,7 +335,7 @@ The Plivo Application is **configured automatically** by the post-deploy script 
 <details>
 <summary>Manual setup (if needed)</summary>
 
-1. In the [Plivo Console](https://cx.plivo.com/), go to **Voice → Applications** and create (or edit) an application.
+1. In the [Plivo Console](https://cx.plivo.com/?utm_source=github&utm_medium=oss&utm_campaign=azure-call-center), go to **Voice → Applications** and create (or edit) an application.
 2. Set:
    - **Answer URL:** `https://<your-container-app-url>/plivo/answer`
    - **Answer Method:** `POST`
