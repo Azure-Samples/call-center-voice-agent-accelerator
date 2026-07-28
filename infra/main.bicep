@@ -35,7 +35,7 @@ param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
 @description('The selected telephony provider')
-@allowed(['acs', 'twilio', 'infobip', 'genesys'])
+@allowed(['acs', 'twilio', 'infobip', 'genesys', 'bandwidth'])
 param telephonyProvider string = 'acs'
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
@@ -48,6 +48,16 @@ param infobipApiBaseUrl string = ''
 @secure()
 @description('Genesys AudioHook API Key for Audio Connector authentication')
 param genesysApiKey string = ''
+@secure()
+@description('Bandwidth OAuth 2.0 Client ID (used for API auth and webhook Basic Auth)')
+param bandwidthClientId string = ''
+@secure()
+@description('Bandwidth OAuth 2.0 Client Secret (used for API auth and webhook Basic Auth)')
+param bandwidthClientSecret string = ''
+@description('Bandwidth account ID (required in the API path for all calls)')
+param bandwidthAccountId string = ''
+@description('Bandwidth Voice Application ID (auto-populated by postdeploy if empty)')
+param bandwidthApplicationId string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
 
@@ -133,6 +143,8 @@ module keyvault 'modules/keyvault.bicep' = {
     twilioAuthToken: twilioAuthToken
     infobipApiKey: infobipApiKey
     genesysApiKey: genesysApiKey
+    bandwidthClientId: bandwidthClientId
+    bandwidthClientSecret: bandwidthClientSecret
   }
 }
 
@@ -167,6 +179,10 @@ module containerapp 'modules/containerapp.bicep' = {
     infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
     infobipApiBaseUrl: infobipApiBaseUrl
     genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
+    bandwidthClientIdSecretUri: keyvault.outputs.bandwidthClientIdUri
+    bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
+    bandwidthAccountId: bandwidthAccountId
+    bandwidthApplicationId: bandwidthApplicationId
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -190,6 +206,7 @@ var providerEndpoints = {
   twilio: 'https://${containerapp.outputs.containerAppFqdn}/voice'
   infobip: 'https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'
   genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
+  bandwidth: 'https://${containerapp.outputs.containerAppFqdn}/bandwidth/incoming'
 }
 output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint

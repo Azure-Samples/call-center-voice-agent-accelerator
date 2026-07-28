@@ -13,6 +13,10 @@ param twilioAuthTokenSecretUri string = ''
 param infobipApiKeySecretUri string = ''
 param infobipApiBaseUrl string = ''
 param genesysApiKeySecretUri string = ''
+param bandwidthClientIdSecretUri string = ''
+param bandwidthClientSecretSecretUri string = ''
+param bandwidthAccountId string = ''
+param bandwidthApplicationId string = ''
 param logAnalyticsWorkspaceName string
 param appInsightsConnectionString string = ''
 @description('The name of the container image')
@@ -103,6 +107,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: genesysApiKeySecretUri
             identity: identityId
           }
+        ] : [],
+        !empty(bandwidthClientIdSecretUri) ? [
+          {
+            name: 'bandwidth-client-id'
+            keyVaultUrl: bandwidthClientIdSecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(bandwidthClientSecretSecretUri) ? [
+          {
+            name: 'bandwidth-client-secret'
+            keyVaultUrl: bandwidthClientSecretSecretUri
+            identity: identityId
+          }
         ] : [])
     }
     template: {
@@ -150,6 +168,24 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'GENESYS_API_KEY'
               secretRef: 'genesys-api-key'
+            }
+          ] : [], !empty(bandwidthClientIdSecretUri) ? [
+            {
+              name: 'BANDWIDTH_CLIENT_ID'
+              secretRef: 'bandwidth-client-id'
+            }
+            {
+              name: 'BANDWIDTH_ACCOUNT_ID'
+              value: bandwidthAccountId
+            }
+            {
+              name: 'BANDWIDTH_APPLICATION_ID'
+              value: bandwidthApplicationId
+            }
+          ] : [], !empty(bandwidthClientSecretSecretUri) ? [
+            {
+              name: 'BANDWIDTH_CLIENT_SECRET'
+              secretRef: 'bandwidth-client-secret'
             }
           ] : [])
           resources: {

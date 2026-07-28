@@ -13,6 +13,8 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     if ($LASTEXITCODE -ne 0) { $infobipKey = "" }
     $genesysKey = azd env get-value GENESYS_API_KEY 2>$null
     if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
+    $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
+    if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
 
     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
         azd env set TELEPHONY_PROVIDER twilio
@@ -25,6 +27,10 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     elseif (-not [string]::IsNullOrWhiteSpace($genesysKey)) {
         azd env set TELEPHONY_PROVIDER genesys
         Write-Host "TELEPHONY_PROVIDER set to: genesys" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+        azd env set TELEPHONY_PROVIDER bandwidth
+        Write-Host "TELEPHONY_PROVIDER set to: bandwidth" -ForegroundColor Green
     }
     else {
         azd env set TELEPHONY_PROVIDER acs

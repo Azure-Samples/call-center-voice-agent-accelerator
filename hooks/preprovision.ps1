@@ -143,8 +143,10 @@ $infobipKey = azd env get-value INFOBIP_API_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $infobipKey = "" }
 $genesysKey = azd env get-value GENESYS_API_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
+$bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
+if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
 
-if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey)) {
+if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken)) {
     Write-Host ""
     Write-Host "Telephony Provider Selection" -ForegroundColor Yellow
     Write-Host "----------------------------"
@@ -154,6 +156,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
     Write-Host "  [2] Twilio (requires Auth Token)"
     Write-Host "  [3] Infobip (requires API Key + Base URL)"
     Write-Host "  [4] Genesys AudioHook Audio Connector (requires API Key)"
+    Write-Host "  [5] Bandwidth Programmable Voice (requires Account ID + Client ID + Secret)"
     Write-Host ""
     $choice = Read-Host "Select provider [1]"
     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
@@ -242,6 +245,93 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             Write-Host ""
             Write-Host "After deployment, the post-deploy script will show your WebSocket URL and simulator link." -ForegroundColor Cyan
         }
+        "5" {
+            Write-Host ""
+            Write-Host "Bandwidth Programmable Voice" -ForegroundColor Yellow
+            Write-Host "Provide your OAuth 2.0 API credentials (Client ID + Client Secret). The Account"
+            Write-Host "ID is required in every API path; the Voice Application and callback URL are"
+            Write-Host "configured automatically post-deploy."
+            Write-Host ""
+            $bwAccountId = Read-Host "Enter Bandwidth Account ID"
+            if ([string]::IsNullOrWhiteSpace($bwAccountId)) {
+                Write-Host "ERROR: Account ID is required." -ForegroundColor Red
+                exit 1
+            }
+            $bwToken = Read-Host "Enter Bandwidth Client ID"
+            if ([string]::IsNullOrWhiteSpace($bwToken)) {
+                Write-Host "ERROR: Client ID is required." -ForegroundColor Red
+                exit 1
+            }
+            $bwSecret = Read-Host "Enter Bandwidth Client Secret" -AsSecureString
+            $bwSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($bwSecret))
+            if ([string]::IsNullOrWhiteSpace($bwSecretPlain)) {
+                Write-Host "ERROR: Client Secret is required." -ForegroundColor Red
+                exit 1
+            }
+            # Validate credentials via the Bandwidth OAuth 2.0 token endpoint
+            # (client_credentials grant). The legacy username/password Basic Auth
+            # scheme is deprecated and no longer provisionable. The two calls are
+            # kept in separate try/catch blocks so we can tell whether the token
+            # exchange itself failed (bad Client ID/Secret) or the account access
+            # check failed (credential lacks the right roles/accounts).
+            Write-Host "Validating Bandwidth credentials..." -ForegroundColor Gray
+            $bwAuthHeader = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${bwToken}:${bwSecretPlain}"))
+
+            # --- Step 1: exchange Client ID/Secret for an OAuth bearer token ---
+            $bwAccessToken = ""
+            try {
+                $bwTokenResp = Invoke-RestMethod -Uri "https://api.bandwidth.com/api/v1/oauth2/token" `
+                    -Headers @{ Authorization = "Basic $bwAuthHeader" } -Method Post `
+                    -ContentType "application/x-www-form-urlencoded" `
+                    -Body "grant_type=client_credentials" -ErrorAction Stop
+                $bwAccessToken = $bwTokenResp.access_token
+            }
+            catch {
+                $status = $_.Exception.Response.StatusCode.value__
+                Write-Host "ERROR: OAuth token exchange failed (HTTP $status) at api.bandwidth.com/api/v1/oauth2/token." -ForegroundColor Red
+                if ($status -eq 401) {
+                    Write-Host "  The Client ID or Client Secret is incorrect, the credential is inactive," -ForegroundColor Gray
+                    Write-Host "  or the secret has expired. Recreate/rotate it under Account > API Credentials." -ForegroundColor Gray
+                }
+                exit 1
+            }
+            if ([string]::IsNullOrWhiteSpace($bwAccessToken)) {
+                Write-Host "ERROR: Bandwidth token response did not contain an access_token." -ForegroundColor Red
+                exit 1
+            }
+            Write-Host "OAuth token obtained." -ForegroundColor Green
+
+            # --- Step 2: confirm the token can reach the target account ---
+            try {
+                Invoke-RestMethod -Uri "https://api.bandwidth.com/api/accounts/$bwAccountId/applications" `
+                    -Headers @{ Authorization = "Bearer $bwAccessToken" } -Method Get `
+                    -ContentType "application/xml" -ErrorAction Stop | Out-Null
+                Write-Host "Bandwidth account verified: $bwAccountId" -ForegroundColor Green
+            }
+            catch {
+                $status = $_.Exception.Response.StatusCode.value__
+                if ($status -eq 401 -or $status -eq 403) {
+                    Write-Host "ERROR: The credential authenticated, but lacks access to account '$bwAccountId' (HTTP $status)." -ForegroundColor Red
+                    Write-Host "  Edit the API Credential (Account > API Credentials) and ensure it includes" -ForegroundColor Gray
+                    Write-Host "  this account and a role granting Dashboard/Numbers (application) access." -ForegroundColor Gray
+                }
+                elseif ($status -eq 404) {
+                    Write-Host "ERROR: Bandwidth Account ID '$bwAccountId' not found (404)." -ForegroundColor Red
+                }
+                else {
+                    Write-Host "ERROR: Failed to validate Bandwidth account access (HTTP $status)." -ForegroundColor Red
+                }
+                exit 1
+            }
+            azd env set BANDWIDTH_ACCOUNT_ID $bwAccountId
+            azd env set BANDWIDTH_CLIENT_ID $bwToken
+            azd env set BANDWIDTH_CLIENT_SECRET $bwSecretPlain
+            azd env set TELEPHONY_PROVIDER bandwidth
+            Write-Host "Bandwidth configured." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "After deployment, the post-deploy script will create/point the Voice application" -ForegroundColor Cyan
+            Write-Host "at your container app. You then associate a phone number's Location with it." -ForegroundColor Cyan
+        }
         default {
             azd env set TELEPHONY_PROVIDER acs
             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green
@@ -260,6 +350,10 @@ else {
     elseif (-not [string]::IsNullOrWhiteSpace($genesysKey)) {
         azd env set TELEPHONY_PROVIDER genesys
         Write-Host "Telephony: Genesys AudioHook (credentials detected)" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+        azd env set TELEPHONY_PROVIDER bandwidth
+        Write-Host "Telephony: Bandwidth (credentials detected)" -ForegroundColor Green
     }
     else {
         azd env set TELEPHONY_PROVIDER acs

@@ -29,6 +29,18 @@
     "genesysApiKey": {
       "value": "${GENESYS_API_KEY}"
     },
+    "bandwidthClientId": {
+      "value": "${BANDWIDTH_CLIENT_ID}"
+    },
+    "bandwidthClientSecret": {
+      "value": "${BANDWIDTH_CLIENT_SECRET}"
+    },
+    "bandwidthAccountId": {
+      "value": "${BANDWIDTH_ACCOUNT_ID}"
+    },
+    "bandwidthApplicationId": {
+      "value": "${BANDWIDTH_APPLICATION_ID}"
+    },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"
     }

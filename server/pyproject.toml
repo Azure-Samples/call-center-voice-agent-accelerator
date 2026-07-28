@@ -31,5 +31,6 @@ twilio = [
 ]
 infobip = []
 genesys = []
+bandwidth = []
 
 [tool.uv]
