@@ -13,6 +13,8 @@ param twilioAuthTokenSecretUri string = ''
 param infobipApiKeySecretUri string = ''
 param infobipApiBaseUrl string = ''
 param genesysApiKeySecretUri string = ''
+param sinchApplicationKeySecretUri string = ''
+param sinchApplicationSecretSecretUri string = ''
 param logAnalyticsWorkspaceName string
 param appInsightsConnectionString string = ''
 @description('The name of the container image')
@@ -103,6 +105,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: genesysApiKeySecretUri
             identity: identityId
           }
+        ] : [],
+        !empty(sinchApplicationKeySecretUri) ? [
+          {
+            name: 'sinch-application-key'
+            keyVaultUrl: sinchApplicationKeySecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(sinchApplicationSecretSecretUri) ? [
+          {
+            name: 'sinch-application-secret'
+            keyVaultUrl: sinchApplicationSecretSecretUri
+            identity: identityId
+          }
         ] : [])
     }
     template: {
@@ -150,6 +166,16 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'GENESYS_API_KEY'
               secretRef: 'genesys-api-key'
+            }
+          ] : [], !empty(sinchApplicationKeySecretUri) ? [
+            {
+              name: 'SINCH_APPLICATION_KEY'
+              secretRef: 'sinch-application-key'
+            }
+          ] : [], !empty(sinchApplicationSecretSecretUri) ? [
+            {
+              name: 'SINCH_APPLICATION_SECRET'
+              secretRef: 'sinch-application-secret'
             }
           ] : [])
           resources: {
