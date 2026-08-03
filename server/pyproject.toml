@@ -31,5 +31,6 @@ twilio = [
 ]
 infobip = []
 genesys = []
+sinch = []
 
 [tool.uv]

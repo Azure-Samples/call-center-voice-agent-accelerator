@@ -29,6 +29,12 @@
     "genesysApiKey": {
       "value": "${GENESYS_API_KEY}"
     },
+    "sinchApplicationKey": {
+      "value": "${SINCH_APPLICATION_KEY}"
+    },
+    "sinchApplicationSecret": {
+      "value": "${SINCH_APPLICATION_SECRET}"
+    },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"
     }

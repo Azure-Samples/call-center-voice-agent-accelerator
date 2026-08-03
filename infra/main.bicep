@@ -35,7 +35,7 @@ param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
 @description('The selected telephony provider')
-@allowed(['acs', 'twilio', 'infobip', 'genesys'])
+@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch'])
 param telephonyProvider string = 'acs'
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
@@ -48,6 +48,12 @@ param infobipApiBaseUrl string = ''
 @secure()
 @description('Genesys AudioHook API Key for Audio Connector authentication')
 param genesysApiKey string = ''
+@secure()
+@description('Sinch Application Key for callback signature validation and WebSocket auth')
+param sinchApplicationKey string = ''
+@secure()
+@description('Sinch Application Secret for callback signature validation')
+param sinchApplicationSecret string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
 
@@ -133,6 +139,8 @@ module keyvault 'modules/keyvault.bicep' = {
     twilioAuthToken: twilioAuthToken
     infobipApiKey: infobipApiKey
     genesysApiKey: genesysApiKey
+    sinchApplicationKey: sinchApplicationKey
+    sinchApplicationSecret: sinchApplicationSecret
   }
 }
 
@@ -167,6 +175,8 @@ module containerapp 'modules/containerapp.bicep' = {
     infobipApiKeySecretUri: keyvault.outputs.infobipApiKeyUri
     infobipApiBaseUrl: infobipApiBaseUrl
     genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
+    sinchApplicationKeySecretUri: keyvault.outputs.sinchApplicationKeyUri
+    sinchApplicationSecretSecretUri: keyvault.outputs.sinchApplicationSecretUri
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -190,6 +200,7 @@ var providerEndpoints = {
   twilio: 'https://${containerapp.outputs.containerAppFqdn}/voice'
   infobip: 'https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'
   genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
+  sinch: 'https://${containerapp.outputs.containerAppFqdn}/sinch/callbacks'
 }
 output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
