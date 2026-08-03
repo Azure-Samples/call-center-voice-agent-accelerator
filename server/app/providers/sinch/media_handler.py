@@ -187,7 +187,7 @@ class SinchMediaHandler(VoiceLiveMediaHandler):
         )
 
         if self._token_validator:
-            if not token or not self._token_validator(token):
+            if not token or not self._token_validator(token, self._call_id or ""):
                 logger.warning("[SinchMediaHandler] Invalid or missing token — rejecting call")
                 await self._send_command("reject")
                 await self.sinch_ws.close(1008)  # Policy Violation

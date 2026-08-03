@@ -14,12 +14,22 @@ Callback signing scheme (see Sinch docs):
 import base64
 import hashlib
 import hmac
+import json
 import logging
 import secrets
+import time
+from datetime import datetime, timezone
 
 from quart import Response, jsonify
 
 logger = logging.getLogger(__name__)
+
+# Reject signed callbacks whose x-timestamp is outside this window (seconds) to
+# limit replay of a captured request. Sinch always sends the current UTC time,
+# so a few minutes of tolerance covers normal clock skew without affecting calls.
+_TIMESTAMP_TOLERANCE_SECONDS = 300
+
+_WS_TOKEN_TTL_SECONDS = 120
 
 
 class SinchEventHandler:
@@ -32,7 +42,6 @@ class SinchEventHandler:
             self.sample_rate = int(config.get("SINCH_SAMPLE_RATE", "24000"))
         except (TypeError, ValueError):
             self.sample_rate = 24000
-        self._valid_ws_tokens: set[str] = set()
 
     # ------------------------------------------------------------------
     # Callback signature validation
@@ -53,6 +62,11 @@ class SinchEventHandler:
         yields False (rejected) — callers map this to a generic 403.
         """
         if not self.app_secret or not authorization:
+            return False
+
+        # Replay protection: reject stale/absent timestamps before doing any
+        # signature work. A captured callback can otherwise be replayed forever.
+        if not self._timestamp_is_fresh(timestamp):
             return False
 
         # Expected: "application <key>:<signature>" (scheme is case-insensitive)
@@ -97,22 +111,113 @@ class SinchEventHandler:
 
         return hmac.compare_digest(provided_sig, expected_sig)
 
+    @staticmethod
+    def _timestamp_is_fresh(timestamp: str) -> bool:
+        """Return True only if `timestamp` (ISO8601 UTC) is within the tolerance.
+
+        The value is validated for freshness only; the raw string is still used
+        verbatim when computing the signature, so parsing never alters the STS.
+        """
+        if not timestamp:
+            return False
+        ts = timestamp.strip()
+        # datetime.fromisoformat accepts a trailing 'Z' only on 3.11+; normalize
+        # it to an explicit offset so parsing is robust across runtimes.
+        if ts.endswith(("Z", "z")):
+            ts = ts[:-1] + "+00:00"
+        try:
+            parsed = datetime.fromisoformat(ts)
+        except ValueError:
+            return False
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        skew = abs((datetime.now(timezone.utc) - parsed).total_seconds())
+        if skew > _TIMESTAMP_TOLERANCE_SECONDS:
+            logger.warning(
+                "[SinchEventHandler] Rejecting callback: x-timestamp skew %.0fs exceeds %ds",
+                skew,
+                _TIMESTAMP_TOLERANCE_SECONDS,
+            )
+            return False
+        return True
+
     # ------------------------------------------------------------------
-    # WebSocket one-time token
+    # WebSocket handshake token (stateless, signed, short-lived)
     # ------------------------------------------------------------------
 
-    def _issue_ws_token(self) -> str:
-        """Create and remember a one-time token embedded in the connect handshake."""
-        token = secrets.token_urlsafe(32)
-        self._valid_ws_tokens.add(token)
-        return token
+    def _token_key(self) -> bytes | None:
+        """HMAC key for signing WS tokens: the base64-decoded app secret.
 
-    def validate_ws_token(self, token: str) -> bool:
-        """Validate and consume a one-time WebSocket token."""
-        if token in self._valid_ws_tokens:
-            self._valid_ws_tokens.discard(token)
-            return True
-        return False
+        Returns None if the secret is missing/invalid; callers then decline to
+        issue or accept a token. In practice the secret is already validated by
+        the callback signature check before a token is ever issued.
+        """
+        if not self.app_secret:
+            return None
+        try:
+            return base64.b64decode(self.app_secret, validate=True)
+        except (ValueError, TypeError):
+            return None
+
+    def _issue_ws_token(self, call_id: str = "") -> str:
+        """Mint a signed `<payload>.<sig>` token bound to a call and expiry.
+
+        The token is self-contained: any replica can verify it with the shared
+        app secret, so no cross-replica session store is required.
+        """
+        key = self._token_key()
+        if key is None:
+            return ""
+        payload = {
+            "exp": int(time.time()) + _WS_TOKEN_TTL_SECONDS,
+            "cid": call_id or "",
+            "jti": secrets.token_urlsafe(8),
+        }
+        body = self._b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+        sig = self._b64url(hmac.new(key, body.encode("ascii"), hashlib.sha256).digest())
+        return f"{body}.{sig}"
+
+    def validate_ws_token(self, token: str, call_id: str = "") -> bool:
+        """Validate a signed WS token: signature, expiry, and (soft) call binding."""
+        if not token or not isinstance(token, str):
+            return False
+        key = self._token_key()
+        if key is None:
+            return False
+        try:
+            body, sig = token.split(".", 1)
+        except ValueError:
+            return False
+
+        expected_sig = self._b64url(
+            hmac.new(key, body.encode("ascii"), hashlib.sha256).digest()
+        )
+        if not hmac.compare_digest(sig, expected_sig):
+            return False
+
+        try:
+            payload = json.loads(self._b64url_decode(body))
+        except (ValueError, TypeError):
+            return False
+
+        if int(time.time()) > int(payload.get("exp", 0)):
+            logger.warning("[SinchEventHandler] Rejecting WS token: expired")
+            return False
+
+        bound_cid = payload.get("cid", "")
+        if bound_cid and call_id and not hmac.compare_digest(str(bound_cid), str(call_id)):
+            logger.warning("[SinchEventHandler] Rejecting WS token: call id mismatch")
+            return False
+
+        return True
+
+    @staticmethod
+    def _b64url(data: bytes) -> str:
+        return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+    @staticmethod
+    def _b64url_decode(data: str) -> bytes:
+        return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
     # ------------------------------------------------------------------
     # Callback dispatch
@@ -143,7 +248,7 @@ class SinchEventHandler:
     def _handle_ice(self, request_data: dict, host_url: str) -> Response:
         """Build the connectStream SVAML for an Incoming Call Event."""
         ws_url = host_url.replace("https://", "wss://").replace("http://", "ws://") + "/sinch/ws"
-        token = self._issue_ws_token()
+        token = self._issue_ws_token(request_data.get("callid", ""))
         # Deliver the one-time token via the WSS query string (the reliable primary
         # path). We also include it as a callHeader; the connect frame echoes these
         # under a top-level `callHeaders` object, which the handler uses as a fallback.

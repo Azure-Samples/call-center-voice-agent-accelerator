@@ -14,7 +14,9 @@
 
 $sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
 if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sinchKey)) {
-    Write-Host "ERROR: SINCH_APPLICATION_KEY not set." -ForegroundColor Red
+    Write-Host "ACTION REQUIRED: SINCH_APPLICATION_KEY is not set, so the Sinch callback URL was not configured." -ForegroundColor Yellow
+    Write-Host "  The deployment is ready, but inbound calls will be rejected until the callback URL is set." -ForegroundColor Yellow
+    Write-Host "  Set the key (azd env set SINCH_APPLICATION_KEY <key>) and re-run: azd hooks run postdeploy" -ForegroundColor Yellow
     exit 0
 }
 
@@ -28,7 +30,9 @@ if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($endpoints)) {
     $callbackUrl = @($endpoints | ConvertFrom-Json)[0]
 }
 if ([string]::IsNullOrWhiteSpace($callbackUrl)) {
-    Write-Host "ERROR: Could not determine callback URL." -ForegroundColor Red
+    Write-Host "ACTION REQUIRED: Could not determine the callback URL from SERVICE_API_ENDPOINTS, so it was not configured on Sinch." -ForegroundColor Yellow
+    Write-Host "  The deployment is ready, but inbound calls will be rejected until the callback URL is set." -ForegroundColor Yellow
+    Write-Host "  Re-run 'azd provision' then re-run: azd hooks run postdeploy" -ForegroundColor Yellow
     exit 0
 }
 
@@ -43,19 +47,32 @@ function Write-ManualInstructions {
     Write-Host ""
 }
 
+# The deployment (infrastructure) is ready; only the Sinch callback auto-config
+# step failed. We do NOT fail the deployment for this — instead we emit a loud,
+# explicit warning with two remediation paths, since until it is fixed every
+# inbound call is rejected. Exit 0 keeps the deployment green.
+function Warn-ConfigIncomplete {
+    param([string]$Reason)
+    Write-Host ""
+    Write-Host "ACTION REQUIRED: Sinch callback URL was NOT auto-configured — inbound calls will be rejected until this is fixed." -ForegroundColor Yellow
+    if ($Reason) { Write-Host "  Reason: $Reason" -ForegroundColor Yellow }
+    Write-Host "  The deployment itself is ready; only the Sinch callback configuration is incomplete." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Fix it either way:" -ForegroundColor Cyan
+    Write-Host "  A) Set the callback URL manually in the Sinch dashboard (steps below), or" -ForegroundColor Cyan
+    Write-Host "  B) Correct the credentials, then re-run: azd hooks run postdeploy" -ForegroundColor Cyan
+    Write-ManualInstructions
+    exit 0
+}
+
 Write-Host ""
 Write-Host "Sinch Voice configuration" -ForegroundColor Green
 Write-Host "-------------------------"
 Write-Host "  Callback URL : $callbackUrl" -ForegroundColor Green
 
-# Without the secret we cannot call the API — print manual steps and stop.
+# Without the secret we cannot call the API — warn with manual steps but keep the deployment green.
 if ([string]::IsNullOrWhiteSpace($sinchSecret)) {
-    Write-Host ""
-    Write-Host "SINCH_APPLICATION_SECRET not set — cannot auto-configure the callback URL." -ForegroundColor Yellow
-    Write-ManualInstructions
-    Write-Host "Then call your Sinch number to talk to your voice agent!" -ForegroundColor White
-    Write-Host ""
-    exit 0
+    Warn-ConfigIncomplete -Reason "SINCH_APPLICATION_SECRET is not set, so the API request cannot be signed."
 }
 
 # Sinch Voice REST API — global (region-agnostic) endpoint for app configuration.
@@ -73,12 +90,7 @@ try {
     $secretBytes = [Convert]::FromBase64String($sinchSecret)
 }
 catch {
-    Write-Host ""
-    Write-Host "SINCH_APPLICATION_SECRET is not valid base64 — cannot sign the API request." -ForegroundColor Yellow
-    Write-ManualInstructions
-    Write-Host "Then call your Sinch number to talk to your voice agent!" -ForegroundColor White
-    Write-Host ""
-    exit 0
+    Warn-ConfigIncomplete -Reason "SINCH_APPLICATION_SECRET is not valid base64, so the API request cannot be signed."
 }
 
 # Build the Sinch application signed request.
@@ -113,21 +125,18 @@ try {
     Write-Host ""
     Write-Host "Then call your Sinch number to talk to your voice agent!" -ForegroundColor White
     Write-Host ""
+    exit 0
 }
 catch {
     $status = $null
     if ($_.Exception.Response) { $status = [int]$_.Exception.Response.StatusCode }
-    Write-Host ""
     if ($status -eq 401) {
-        Write-Host "Sinch API returned 401 Unauthorized — check the Application Key/Secret, and ensure this machine's clock is accurate (signed requests are time-sensitive)." -ForegroundColor Yellow
+        Warn-ConfigIncomplete -Reason "Sinch API returned 401 Unauthorized — check the Application Key/Secret, and ensure this machine's clock is accurate (signed requests are time-sensitive)."
     }
     elseif ($status) {
-        Write-Host "Sinch API call failed (HTTP $status)." -ForegroundColor Yellow
+        Warn-ConfigIncomplete -Reason "Sinch API call failed (HTTP $status)."
     }
     else {
-        Write-Host "Sinch API call failed: $($_.Exception.Message)" -ForegroundColor Yellow
+        Warn-ConfigIncomplete -Reason "Sinch API call failed: $($_.Exception.Message)"
     }
-    Write-ManualInstructions
-    Write-Host "Then call your Sinch number to talk to your voice agent!" -ForegroundColor White
-    Write-Host ""
 }
