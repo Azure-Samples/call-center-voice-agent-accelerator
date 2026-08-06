@@ -2,13 +2,13 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Genesys Cloud (AudioHook)**, and **Bandwidth**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, **Genesys Cloud (AudioHook)**, and **Bandwidth**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), and [Bandwidth](https://dev.bandwidth.com/docs/voice/programmable-voice/).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), and [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook).
 
 
 <div align="center">
@@ -33,6 +33,7 @@ The solution includes:
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
+  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
   - **Bandwidth** — PSTN via Bandwidth Programmable Voice with bidirectional media streaming (BXML)
 
@@ -44,7 +45,7 @@ The solution includes:
 > You can also try the Voice Live API via [Azure AI Foundry](https://ai.azure.com/foundry) for quick experimentation before deploying this template to your own Azure subscription.
 
 ### Architecture diagram
-|![Architecture Diagram](./docs/images/architecture_v0.0.5.png)|
+|![Architecture Diagram](./docs/images/architecture_v0.0.6.png)|
 |---|
 
 <br/>
@@ -166,8 +167,8 @@ To change the `azd` parameters from the default values, follow the steps [here](
 
     The setup wizard will then guide you through:
     - **Model selection** — choose from 12 fully managed models across Pro, Basic, and Lite tiers (or bring your own)
-    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Genesys, or Bandwidth
-    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Genesys, or Bandwidth
+    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Sinch, Genesys, or Bandwidth
+    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Sinch, Genesys, or Bandwidth
 
     After provisioning completes, you'll see a deployment summary with your webhook endpoint(s) and next steps.
 
@@ -364,6 +365,47 @@ Dial your Infobip phone number. The call connects to the real-time voice agent p
 1. Infobip sends a `CALL_RECEIVED` webhook to `/infobip/incoming` — the server answers the call
 2. Once established, the server creates a Dialog that bridges the caller to the WebSocket endpoint
 3. Infobip connects to `/infobip/ws` — audio flows bidirectionally between the caller and Azure Voice Live
+
+### 📞 Telephony with Sinch Client (Call Center Scenario)
+
+Inbound calls are handled via the [Sinch Voice API](https://developers.sinch.com/docs/voice/) connectStream feature — on an incoming call the server returns SVAML that instructs Sinch to open a WebSocket, then bridges the caller's audio to Azure Voice Live over that connection.
+
+> **Note:** connectStream is a **closed beta** Sinch feature. You must have it enabled on your Sinch account before it can be used.
+
+#### 1. Prerequisites
+
+- A [Sinch account](https://dashboard.sinch.com/signup) with the Voice API and **connectStream (closed beta)** enabled
+- A Voice-enabled phone number assigned to your Sinch Voice application
+
+> During `azd up`, the setup wizard prompts for your Sinch application credentials and stores the secret securely in Azure Key Vault.
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `SINCH_APPLICATION_KEY` | Your Sinch Voice application key | [Sinch Dashboard](https://dashboard.sinch.com) → Voice → Apps |
+| `SINCH_APPLICATION_SECRET` | Your Sinch Voice application secret | [Sinch Dashboard](https://dashboard.sinch.com) → Voice → Apps |
+
+#### 2. Callback URL (Automatic)
+
+The Sinch callback URL is **configured automatically** by the post-deploy script during `azd up`, using the Sinch [Update Callbacks](https://developers.sinch.com/docs/voice/api-reference/configuration/tag/Callbacks/) API. It points your Voice application at `https://<your-container-app-url>/sinch/callbacks`.
+
+<details>
+<summary>Manual setup (if needed)</summary>
+
+1. In the [Sinch Dashboard](https://dashboard.sinch.com), open your Voice application settings.
+2. Set the **Callback URL (primary)** to `https://<your-container-app-url>/sinch/callbacks`.
+3. Ensure **connectStream (closed beta)** is enabled for the application.
+4. Assign your Voice-enabled phone number to the application.
+
+</details>
+
+#### 3. Call the Agent
+
+Dial your Sinch phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
+
+**How it works:**
+1. Sinch sends an Incoming Call Event (ICE) to `/sinch/callbacks` — the server validates the signature and returns SVAML with a connectStream action and a one-time WebSocket token
+2. Sinch opens a WebSocket to `/sinch/ws` and sends a `connect` frame — the server verifies the token, replies with `answer`, and bridges audio to Azure Voice Live
+3. The AI agent hears the caller, generates a response, and audio (PCM 24kHz) streams back bidirectionally over the same connection
 
 ### 🎧 Genesys Cloud AudioHook (Audio Connector)
 

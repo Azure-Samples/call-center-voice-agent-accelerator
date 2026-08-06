@@ -10,6 +10,10 @@ param infobipApiKey string = ''
 @secure()
 param genesysApiKey string = ''
 @secure()
+param sinchApplicationKey string = ''
+@secure()
+param sinchApplicationSecret string = ''
+@secure()
 param bandwidthClientId string = ''
 @secure()
 param bandwidthClientSecret string = ''
@@ -67,6 +71,22 @@ resource genesysApiKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if
   }
 }
 
+resource sinchApplicationKeySecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(sinchApplicationKey)) {
+  parent: keyVault
+  name: 'SINCH-APPLICATION-KEY'
+  properties: {
+    value: sinchApplicationKey
+  }
+}
+
+resource sinchApplicationSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(sinchApplicationSecret)) {
+  parent: keyVault
+  name: 'SINCH-APPLICATION-SECRET'
+  properties: {
+    value: sinchApplicationSecret
+  }
+}
+
 resource bandwidthClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(bandwidthClientId)) {
   parent: keyVault
   name: 'BANDWIDTH-CLIENT-ID'
@@ -87,6 +107,8 @@ output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${
 output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
 output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
 output genesysApiKeyUri string = !empty(genesysApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/GENESYS-API-KEY' : ''
+output sinchApplicationKeyUri string = !empty(sinchApplicationKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-KEY' : ''
+output sinchApplicationSecretUri string = !empty(sinchApplicationSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-SECRET' : ''
 output bandwidthClientIdUri string = !empty(bandwidthClientId) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-ID' : ''
 output bandwidthClientSecretUri string = !empty(bandwidthClientSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-SECRET' : ''
 output keyVaultId string = keyVault.id

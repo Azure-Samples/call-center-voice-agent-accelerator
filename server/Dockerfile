@@ -3,7 +3,7 @@
 ###############
 FROM python:3.12-slim-bookworm AS builder
 
-# Telephony provider: acs (default), twilio, infobip, genesys, or bandwidth
+# Telephony provider: acs (default), twilio, infobip, genesys, sinch or bandwidth.
 ARG TELEPHONY=acs
 
 # Install and configure UV, see https://docs.astral.sh/uv/ for more information

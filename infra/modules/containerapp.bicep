@@ -13,6 +13,8 @@ param twilioAuthTokenSecretUri string = ''
 param infobipApiKeySecretUri string = ''
 param infobipApiBaseUrl string = ''
 param genesysApiKeySecretUri string = ''
+param sinchApplicationKeySecretUri string = ''
+param sinchApplicationSecretSecretUri string = ''
 param bandwidthClientIdSecretUri string = ''
 param bandwidthClientSecretSecretUri string = ''
 param bandwidthAccountId string = ''
@@ -108,6 +110,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             identity: identityId
           }
         ] : [],
+        !empty(sinchApplicationKeySecretUri) ? [
+          {
+            name: 'sinch-application-key'
+            keyVaultUrl: sinchApplicationKeySecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(sinchApplicationSecretSecretUri) ? [
+          {
+            name: 'sinch-application-secret'
+            keyVaultUrl: sinchApplicationSecretSecretUri
+            identity: identityId
+          }
+        ] : [],
         !empty(bandwidthClientIdSecretUri) ? [
           {
             name: 'bandwidth-client-id'
@@ -168,6 +184,16 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'GENESYS_API_KEY'
               secretRef: 'genesys-api-key'
+            }
+          ] : [], !empty(sinchApplicationKeySecretUri) ? [
+            {
+              name: 'SINCH_APPLICATION_KEY'
+              secretRef: 'sinch-application-key'
+            }
+          ] : [], !empty(sinchApplicationSecretSecretUri) ? [
+            {
+              name: 'SINCH_APPLICATION_SECRET'
+              secretRef: 'sinch-application-secret'
             }
           ] : [], !empty(bandwidthClientIdSecretUri) ? [
             {

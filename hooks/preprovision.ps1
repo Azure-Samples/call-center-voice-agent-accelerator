@@ -143,10 +143,12 @@ $infobipKey = azd env get-value INFOBIP_API_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $infobipKey = "" }
 $genesysKey = azd env get-value GENESYS_API_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
+$sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
+if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
 $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
 if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
 
-if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($sinchKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken)) {
     Write-Host ""
     Write-Host "Telephony Provider Selection" -ForegroundColor Yellow
     Write-Host "----------------------------"
@@ -156,7 +158,8 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
     Write-Host "  [2] Twilio (requires Auth Token)"
     Write-Host "  [3] Infobip (requires API Key + Base URL)"
     Write-Host "  [4] Genesys AudioHook Audio Connector (requires API Key)"
-    Write-Host "  [5] Bandwidth Programmable Voice (requires Account ID + Client ID + Secret)"
+    Write-Host "  [5] Sinch (requires Application Key + Secret)"
+    Write-Host "  [6] Bandwidth Programmable Voice (requires Account ID + Client ID + Secret)"
     Write-Host ""
     $choice = Read-Host "Select provider [1]"
     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
@@ -246,6 +249,29 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             Write-Host "After deployment, the post-deploy script will show your WebSocket URL and simulator link." -ForegroundColor Cyan
         }
         "5" {
+            Write-Host ""
+            Write-Host "Sinch Voice (connectStream)" -ForegroundColor Yellow
+            Write-Host "Find these in the Sinch dashboard under Voice > Apps."
+            Write-Host ""
+            $sKey = Read-Host "Enter Sinch Application Key"
+            if ([string]::IsNullOrWhiteSpace($sKey)) {
+                Write-Host "ERROR: Application Key is required." -ForegroundColor Red
+                exit 1
+            }
+            $sSecret = Read-Host "Enter Sinch Application Secret" -AsSecureString
+            $sSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($sSecret))
+            if ([string]::IsNullOrWhiteSpace($sSecretPlain)) {
+                Write-Host "ERROR: Application Secret is required." -ForegroundColor Red
+                exit 1
+            }
+            azd env set SINCH_APPLICATION_KEY $sKey
+            azd env set SINCH_APPLICATION_SECRET $sSecretPlain
+            azd env set TELEPHONY_PROVIDER sinch
+            Write-Host "Sinch configured." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "After deployment, the post-deploy script will show the callback URL to configure in the Sinch dashboard." -ForegroundColor Cyan
+        }
+        "6" {
             Write-Host ""
             Write-Host "Bandwidth Programmable Voice" -ForegroundColor Yellow
             Write-Host "Provide your OAuth 2.0 API credentials (Client ID + Client Secret). The Account"
@@ -350,6 +376,10 @@ else {
     elseif (-not [string]::IsNullOrWhiteSpace($genesysKey)) {
         azd env set TELEPHONY_PROVIDER genesys
         Write-Host "Telephony: Genesys AudioHook (credentials detected)" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($sinchKey)) {
+        azd env set TELEPHONY_PROVIDER sinch
+        Write-Host "Telephony: Sinch (credentials detected)" -ForegroundColor Green
     }
     elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
         azd env set TELEPHONY_PROVIDER bandwidth
