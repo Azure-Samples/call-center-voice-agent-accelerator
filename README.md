@@ -8,7 +8,7 @@ The Azure voice live API is a solution enabling low-latency, high-quality speech
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), and [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), and [Bandwidth](https://dev.bandwidth.com/docs/voice/).
 
 
 <div align="center">
@@ -33,8 +33,8 @@ The solution includes:
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
-  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
+  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
   - **Bandwidth** — PSTN via Bandwidth Programmable Voice with bidirectional media streaming (BXML)
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
@@ -459,7 +459,7 @@ Caller → PSTN → Bandwidth → BXML media stream → Container App → Voice 
 #### 1. Prerequisites
 
 - A [Bandwidth account](https://www.bandwidth.com/) with **Programmable Voice** enabled
-- A phone number assigned to a Location (Sip-Peer) in the [Bandwidth Dashboard](https://dashboard.bandwidth.com)
+- A phone number in your [Bandwidth Dashboard](https://dashboard.bandwidth.com)
 - OAuth 2.0 API credentials — a **Client ID** and **Client Secret**
 
 > Bandwidth's legacy API User (username/password Basic Auth) scheme is deprecated. New accounts authenticate with **OAuth 2.0 Client Credentials** (Client ID / Client Secret). During `azd up`, the setup wizard prompts for these and stores the secret securely in Azure Key Vault.
@@ -472,22 +472,19 @@ Caller → PSTN → Bandwidth → BXML media stream → Container App → Voice 
 
 #### 2. Voice Application (Automatic)
 
-The Bandwidth **Voice-V2 Application** and its callback URL are **configured automatically** by the post-deploy script during `azd up`. It creates (or updates) an application named `voice-agent-accelerator` with:
+The Bandwidth **Voice-V2 Application** and its callback URL are **configured automatically** by the post-deploy script during `azd up`:
 - **Call-initiated callback URL:** `https://<your-container-app-url>/bandwidth/incoming` (POST)
 - **Callback credentials:** HTTP Basic auth using your Client ID / Client Secret
 
 The script prints the resulting `ApplicationId`, which is also saved to your `azd` environment as `BANDWIDTH_APPLICATION_ID`.
 
+> **Automatic fallback for trial / self-service accounts:** Bandwidth does not allow re-binding a phone number to a different application through the API on these accounts (confirmed by Bandwidth support — it is a platform limitation). On such accounts the number stays bound to the pre-provisioned `default-http-voice` application, whose callback points at a Bandwidth sample endpoint (you'd hear a canned greeting, then the call drops). To work around this, the post-deploy script re-points that Bandwidth-provided default application's callback URL at your container. It only touches Bandwidth-owned sample apps (never your own third-party applications), so inbound calls reach your voice agent without any manual number re-binding.
+
 #### 3. Associate a Number and Enable Inbound Calling (Manual)
 
-Bandwidth manages phone numbers through **Locations (Sip-Peers)** rather than assigning them directly to an application, so this step is completed in the Dashboard:
+On **standard accounts**, Bandwidth binds phone numbers to applications through their own dashboard/API rather than through this template. Point your number at the `voice-agent-accelerator` application (the `ApplicationId` from step 2) following the [Bandwidth documentation](https://dev.bandwidth.com/docs/voice/). On **trial / self-service accounts** this is handled automatically — see the fallback note above — so you can skip this step.
 
-1. In the [Bandwidth Dashboard](https://dashboard.bandwidth.com), open the **Location (Sip-Peer)** that holds your phone number.
-2. Under the Location's **Voice / Inbound** settings, route inbound calls to the HTTP Voice application `voice-agent-accelerator` (the `ApplicationId` from step 2).
-3. If prompted, enable **"Accept inbound SIP calls"** and choose an authentication method (password authentication is fine — an IP access list is not required for HTTP Voice).
-4. Confirm your phone number is assigned to this Location.
-
-> **Trial accounts:** Inbound calls may be rejected with SIP `402 Payment Required` even though routing is correct. This is an account **billing/activation** state — not a code or configuration issue. Confirm your account is activated and that your credit/rate plan covers *Inbound Voice*, or contact Bandwidth support to enable inbound calling on the number.
+> **Trial accounts:** Inbound calls may be rejected with SIP `402 Payment Required` even when routing is correct. This is an account **billing/activation** state, not a code or configuration issue — confirm your account is activated for *Inbound Voice*, or contact Bandwidth support.
 
 #### 4. Call the Agent
 

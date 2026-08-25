@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
     name="bandwidth",
     display_name="Bandwidth",
     detect_key="BANDWIDTH_CLIENT_ID",
-    required_config=["BANDWIDTH_CLIENT_ID", "BANDWIDTH_ACCOUNT_ID"],
+    required_config=[
+        "BANDWIDTH_CLIENT_ID",
+        "BANDWIDTH_CLIENT_SECRET",
+        "BANDWIDTH_ACCOUNT_ID",
+    ],
 )
 def register_bandwidth_routes(app, call_manager: CallManager):
     """Register Bandwidth voice callback and WebSocket routes."""

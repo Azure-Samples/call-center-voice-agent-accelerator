@@ -146,10 +146,61 @@ catch {
     exit 0
 }
 
-# --- Step 3: Number association guidance (account/location-specific) ---
+# --- Step 3: Re-point any Bandwidth-managed "default" Voice app at our container ---
+#
+# Trial / self-service (app.bandwidth.com "express") accounts pre-provision a
+# default Voice-V2 application (typically named "default-http-voice") whose
+# callback points at a Bandwidth sample endpoint (e.g. .../sampleCallback or
+# express.cx-accounts...). Purchased numbers are bound to THAT app, not ours,
+# and the classic Numbers/Sip-Peer API is often not authorized on trial
+# credentials (HTTP 401) so we cannot re-bind the number directly.
+#
+# Since a Voice app's callback URL IS writable, the reliable automated fix is to
+# re-point the default app's callback at our container. That way inbound calls
+# on the number reach us without touching number/Location bindings. We ONLY
+# touch apps whose callback is a Bandwidth-owned sample/express host, never a
+# user's own third-party app.
+$redirected = @()
+try {
+    [xml]$reList = Invoke-RestMethod -Uri $apiBase -Headers $headers -Method Get -ContentType "application/xml" -ErrorAction Stop
+    foreach ($a in @($reList.ApplicationProvisioningResponse.ApplicationList.Application)) {
+        if ($a.ServiceType -ne "Voice-V2") { continue }
+        if ($a.ApplicationId -eq $applicationId) { continue }          # skip our own app
+        if ($a.CallInitiatedCallbackUrl -eq $webhookUrl) { continue }   # already points at us
+        $cb = [string]$a.CallInitiatedCallbackUrl
+        $isBandwidthDefault = ($a.AppName -eq "default-http-voice") `
+            -or ($cb -match "sampleCallback") `
+            -or ($cb -match "express\.cx-accounts") `
+            -or ($cb -match "\.bandwidth\.com/")
+        if (-not $isBandwidthDefault) { continue }
+
+        $body = New-VoiceApplicationXml -Name $a.AppName -CallbackUrl $webhookUrl -UserId $clientId -Password $clientSecret
+        try {
+            Invoke-RestMethod -Uri "$apiBase/$($a.ApplicationId)" -Headers $headers -Method Put `
+                -Body $body -ContentType "application/xml" -ErrorAction Stop | Out-Null
+            $redirected += "$($a.AppName) ($($a.ApplicationId))"
+        }
+        catch {
+            Write-Host "Could not re-point default app $($a.AppName) ($($a.ApplicationId))." -ForegroundColor Yellow
+        }
+    }
+}
+catch {
+    # Non-fatal: fall through to manual guidance below.
+}
+
+if ($redirected.Count -gt 0) {
+    Write-Host ""
+    Write-Host "Re-pointed Bandwidth default Voice app(s) at your container:" -ForegroundColor Green
+    foreach ($r in $redirected) { Write-Host "  $r -> $webhookUrl" -ForegroundColor Gray }
+    Write-Host "  Numbers bound to these apps now reach your voice agent. Call your number to test." -ForegroundColor Gray
+    Write-Host ""
+}
+
+# --- Step 4: Number association guidance (classic accounts) ---
 Write-Host ""
-Write-Host "Next step: associate a phone number's Location (Sip-Peer) with this application." -ForegroundColor White
-Write-Host "  Assign application $applicationId to the Location holding your Bandwidth number" -ForegroundColor Gray
-Write-Host "  in the Bandwidth Dashboard, or via the Sip-Peers API. Then call the number to" -ForegroundColor Gray
+Write-Host "If your number is NOT bound to a Bandwidth default app (classic account):" -ForegroundColor White
+Write-Host "  Associate the number's Location with application $applicationId" -ForegroundColor Gray
+Write-Host "  in the Bandwidth Dashboard. Then call the number to" -ForegroundColor Gray
 Write-Host "  talk to your voice agent." -ForegroundColor Gray
 Write-Host ""
