@@ -5,8 +5,10 @@ Bandwidth <StartStream> WebSocket protocol (JSON text frames):
 - media:  {"eventType":"media","track":"inbound","payload":"<base64 PCMU>","sequenceNumber":"1"}
 - stop:   {"eventType":"stop","metadata":{...}}
 
-Inbound audio is PCMU/G711 8kHz (mu-law); Voice Live expects PCM 24kHz 16-bit mono.
-Outbound audio is sent back as playAudio events using raw PCM 24kHz (audio/pcm;rate=24000),
+Inbound audio is PCMU/G711 8kHz (mu-law). Voice Live supports several audio
+formats; this template configures the default PCM 24kHz 16-bit mono, 
+so inbound mu-law is resampled to that. Outbound audio is sent back as 
+playAudio events using raw PCM 24kHz (audio/pcm;rate=24000),
 which avoids re-encoding the Voice Live output.
 """
 
@@ -23,7 +25,8 @@ from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
 
 logger = logging.getLogger(__name__)
 
-# Bandwidth streams mu-law (PCMU) 8000Hz; Voice Live uses PCM 24000Hz 16-bit mono.
+# Bandwidth streams mu-law (PCMU) 8000Hz; Voice Live is configured here for its
+# default PCM 24000Hz 16-bit mono format.
 BANDWIDTH_SAMPLE_RATE = 8000
 VOICELIVE_SAMPLE_RATE = 24000
 _TOKEN_TTL = 60
