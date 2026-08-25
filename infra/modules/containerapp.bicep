@@ -15,6 +15,10 @@ param infobipApiBaseUrl string = ''
 param genesysApiKeySecretUri string = ''
 param sinchApplicationKeySecretUri string = ''
 param sinchApplicationSecretSecretUri string = ''
+param bandwidthClientIdSecretUri string = ''
+param bandwidthClientSecretSecretUri string = ''
+param bandwidthAccountId string = ''
+param bandwidthApplicationId string = ''
 param logAnalyticsWorkspaceName string
 param appInsightsConnectionString string = ''
 @description('The name of the container image')
@@ -119,6 +123,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: sinchApplicationSecretSecretUri
             identity: identityId
           }
+        ] : [],
+        !empty(bandwidthClientIdSecretUri) ? [
+          {
+            name: 'bandwidth-client-id'
+            keyVaultUrl: bandwidthClientIdSecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(bandwidthClientSecretSecretUri) ? [
+          {
+            name: 'bandwidth-client-secret'
+            keyVaultUrl: bandwidthClientSecretSecretUri
+            identity: identityId
+          }
         ] : [])
     }
     template: {
@@ -176,6 +194,24 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'SINCH_APPLICATION_SECRET'
               secretRef: 'sinch-application-secret'
+            }
+          ] : [], !empty(bandwidthClientIdSecretUri) ? [
+            {
+              name: 'BANDWIDTH_CLIENT_ID'
+              secretRef: 'bandwidth-client-id'
+            }
+            {
+              name: 'BANDWIDTH_ACCOUNT_ID'
+              value: bandwidthAccountId
+            }
+            {
+              name: 'BANDWIDTH_APPLICATION_ID'
+              value: bandwidthApplicationId
+            }
+          ] : [], !empty(bandwidthClientSecretSecretUri) ? [
+            {
+              name: 'BANDWIDTH_CLIENT_SECRET'
+              secretRef: 'bandwidth-client-secret'
             }
           ] : [])
           resources: {

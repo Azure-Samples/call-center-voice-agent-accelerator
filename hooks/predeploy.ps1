@@ -15,6 +15,8 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
     $sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
     if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
+    $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
+    if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
 
     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
         azd env set TELEPHONY_PROVIDER twilio
@@ -31,6 +33,10 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     elseif (-not [string]::IsNullOrWhiteSpace($sinchKey)) {
         azd env set TELEPHONY_PROVIDER sinch
         Write-Host "TELEPHONY_PROVIDER set to: sinch" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+        azd env set TELEPHONY_PROVIDER bandwidth
+        Write-Host "TELEPHONY_PROVIDER set to: bandwidth" -ForegroundColor Green
     }
     else {
         azd env set TELEPHONY_PROVIDER acs

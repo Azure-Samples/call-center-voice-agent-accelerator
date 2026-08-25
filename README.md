@@ -2,13 +2,13 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, and **Genesys Cloud (AudioHook)**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, **Genesys Cloud (AudioHook)**, and **Bandwidth**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), and [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), and [Bandwidth](https://dev.bandwidth.com/docs/voice/).
 
 
 <div align="center">
@@ -33,8 +33,9 @@ The solution includes:
   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
-  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
+  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
+  - **Bandwidth** — PSTN via Bandwidth Programmable Voice with bidirectional media streaming (BXML)
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
@@ -166,8 +167,8 @@ To change the `azd` parameters from the default values, follow the steps [here](
 
     The setup wizard will then guide you through:
     - **Model selection** — choose from 12 fully managed models across Pro, Basic, and Lite tiers (or bring your own)
-    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Sinch, or Genesys
-    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Sinch, or Genesys
+    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Sinch, Genesys, or Bandwidth
+    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Sinch, Genesys, or Bandwidth
 
     After provisioning completes, you'll see a deployment summary with your webhook endpoint(s) and next steps.
 
@@ -446,6 +447,53 @@ For protocol details, see the [Genesys AudioHook developer documentation](https:
 1. Genesys Cloud opens a WebSocket to `/audiohook/ws` and authenticates with the API key
 2. The caller's audio streams to the server, which bridges it to Azure Voice Live
 3. The AI response audio is streamed back to Genesys Cloud for the caller to hear
+
+### 📞 Telephony with Bandwidth Client (Call Center Scenario)
+
+Inbound calls are handled via [Bandwidth Programmable Voice](https://dev.bandwidth.com/docs/voice/) — when a call arrives, the server returns [BXML](https://dev.bandwidth.com/docs/voice/bxml/) that opens a bidirectional media stream, then bridges the caller's audio to Azure Voice Live over a WebSocket.
+
+```
+Caller → PSTN → Bandwidth → BXML media stream → Container App → Voice Live AI
+```
+
+#### 1. Prerequisites
+
+- A [Bandwidth account](https://www.bandwidth.com/) with **Programmable Voice** enabled
+- A phone number in your [Bandwidth Dashboard](https://dashboard.bandwidth.com)
+- OAuth 2.0 API credentials — a **Client ID** and **Client Secret**
+
+> Bandwidth's legacy API User (username/password Basic Auth) scheme is deprecated. New accounts authenticate with **OAuth 2.0 Client Credentials** (Client ID / Client Secret). During `azd up`, the setup wizard prompts for these and stores the secret securely in Azure Key Vault.
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `BANDWIDTH_ACCOUNT_ID` | Your numeric Bandwidth Account ID (used in every API path) | [Bandwidth Dashboard](https://dashboard.bandwidth.com) → Account |
+| `BANDWIDTH_CLIENT_ID` | OAuth 2.0 Client ID (starts with `CLI-`) | Dashboard → Account → **API Credentials** |
+| `BANDWIDTH_CLIENT_SECRET` | OAuth 2.0 Client Secret | Dashboard → Account → **API Credentials** (shown once at creation) |
+
+#### 2. Voice Application (Automatic)
+
+The Bandwidth **Voice-V2 Application** and its callback URL are **configured automatically** by the post-deploy script during `azd up`:
+- **Call-initiated callback URL:** `https://<your-container-app-url>/bandwidth/incoming` (POST)
+- **Callback credentials:** HTTP Basic auth using your Client ID / Client Secret
+
+The script prints the resulting `ApplicationId`, which is also saved to your `azd` environment as `BANDWIDTH_APPLICATION_ID`.
+
+> **Automatic fallback for trial / self-service accounts:** Bandwidth does not allow re-binding a phone number to a different application through the API on these accounts (confirmed by Bandwidth support — it is a platform limitation). On such accounts the number stays bound to the pre-provisioned `default-http-voice` application, whose callback points at a Bandwidth sample endpoint (you'd hear a canned greeting, then the call drops). To work around this, the post-deploy script re-points that Bandwidth-provided default application's callback URL at your container. It only touches Bandwidth-owned sample apps (never your own third-party applications), so inbound calls reach your voice agent without any manual number re-binding.
+
+#### 3. Associate a Number and Enable Inbound Calling (Manual)
+
+On **standard accounts**, Bandwidth binds phone numbers to applications through their own dashboard/API rather than through this template. Point your number at the `voice-agent-accelerator` application (the `ApplicationId` from step 2) following the [Bandwidth documentation](https://dev.bandwidth.com/docs/voice/). On **trial / self-service accounts** this is handled automatically — see the fallback note above — so you can skip this step.
+
+> **Trial accounts:** Inbound calls may be rejected with SIP `402 Payment Required` even when routing is correct. This is an account **billing/activation** state, not a code or configuration issue — confirm your account is activated for *Inbound Voice*, or contact Bandwidth support.
+
+#### 4. Call the Agent
+
+Dial your Bandwidth phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
+
+**How it works:**
+1. Bandwidth sends a call callback to `/bandwidth/incoming` — the server validates the Basic auth credentials and returns BXML that starts a bidirectional media stream
+2. Bandwidth opens a WebSocket to `/bandwidth/ws` — the server verifies the embedded token, then bridges audio to Azure Voice Live
+3. The caller's audio (PCMU 8kHz) is upsampled to PCM 24kHz for Voice Live; the AI response is streamed back through the same connection
 
 ## Local Development
 

@@ -35,7 +35,7 @@ param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
 @description('The selected telephony provider')
-@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch'])
+@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch', 'bandwidth'])
 param telephonyProvider string = 'acs'
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
@@ -54,6 +54,16 @@ param sinchApplicationKey string = ''
 @secure()
 @description('Sinch Application Secret for callback signature validation')
 param sinchApplicationSecret string = ''
+@secure()
+@description('Bandwidth OAuth 2.0 Client ID (used for API auth and webhook Basic Auth)')
+param bandwidthClientId string = ''
+@secure()
+@description('Bandwidth OAuth 2.0 Client Secret (used for API auth and webhook Basic Auth)')
+param bandwidthClientSecret string = ''
+@description('Bandwidth account ID (required in the API path for all calls)')
+param bandwidthAccountId string = ''
+@description('Bandwidth Voice Application ID (auto-populated by postdeploy if empty)')
+param bandwidthApplicationId string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
 
@@ -141,6 +151,8 @@ module keyvault 'modules/keyvault.bicep' = {
     genesysApiKey: genesysApiKey
     sinchApplicationKey: sinchApplicationKey
     sinchApplicationSecret: sinchApplicationSecret
+    bandwidthClientId: bandwidthClientId
+    bandwidthClientSecret: bandwidthClientSecret
   }
 }
 
@@ -177,6 +189,10 @@ module containerapp 'modules/containerapp.bicep' = {
     genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
     sinchApplicationKeySecretUri: keyvault.outputs.sinchApplicationKeyUri
     sinchApplicationSecretSecretUri: keyvault.outputs.sinchApplicationSecretUri
+    bandwidthClientIdSecretUri: keyvault.outputs.bandwidthClientIdUri
+    bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
+    bandwidthAccountId: bandwidthAccountId
+    bandwidthApplicationId: bandwidthApplicationId
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -201,6 +217,7 @@ var providerEndpoints = {
   infobip: 'https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'
   genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
   sinch: 'https://${containerapp.outputs.containerAppFqdn}/sinch/callbacks'
+  bandwidth: 'https://${containerapp.outputs.containerAppFqdn}/bandwidth/incoming'
 }
 output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint

@@ -1434,7 +1434,7 @@ requires-dist = [
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "websockets", specifier = ">=15.0.1" },
 ]
-provides-extras = ["acs", "twilio", "infobip", "genesys", "sinch"]
+provides-extras = ["acs", "twilio", "infobip", "genesys", "sinch", "bandwidth"]
 
 [[package]]
 name = "websockets"

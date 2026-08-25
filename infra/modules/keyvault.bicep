@@ -13,6 +13,10 @@ param genesysApiKey string = ''
 param sinchApplicationKey string = ''
 @secure()
 param sinchApplicationSecret string = ''
+@secure()
+param bandwidthClientId string = ''
+@secure()
+param bandwidthClientSecret string = ''
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: keyVaultName
@@ -83,11 +87,29 @@ resource sinchApplicationSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07
   }
 }
 
+resource bandwidthClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(bandwidthClientId)) {
+  parent: keyVault
+  name: 'BANDWIDTH-CLIENT-ID'
+  properties: {
+    value: bandwidthClientId
+  }
+}
+
+resource bandwidthClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(bandwidthClientSecret)) {
+  parent: keyVault
+  name: 'BANDWIDTH-CLIENT-SECRET'
+  properties: {
+    value: bandwidthClientSecret
+  }
+}
+
 output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}' : ''
 output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
 output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
 output genesysApiKeyUri string = !empty(genesysApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/GENESYS-API-KEY' : ''
 output sinchApplicationKeyUri string = !empty(sinchApplicationKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-KEY' : ''
 output sinchApplicationSecretUri string = !empty(sinchApplicationSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-SECRET' : ''
+output bandwidthClientIdUri string = !empty(bandwidthClientId) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-ID' : ''
+output bandwidthClientSecretUri string = !empty(bandwidthClientSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-SECRET' : ''
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name
