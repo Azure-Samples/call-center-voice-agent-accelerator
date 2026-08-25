@@ -1,0 +1,1195 @@
+diff --git a/README.md b/README.md
+index ad31bb2..194e4c2 100644
+--- a/README.md
++++ b/README.md
+@@ -2,13 +2,13 @@
+ | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
+ |---|---|
+ 
+-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, and **Genesys Cloud (AudioHook)**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
++Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, **Genesys Cloud (AudioHook)**, and **Bandwidth**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+ 
+ The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
+ 
+ The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
+ 
+-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), and [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook).
++Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), and [Bandwidth](https://dev.bandwidth.com/docs/voice/).
+ 
+ 
+ <div align="center">
+@@ -33,8 +33,9 @@ The solution includes:
+   - **Azure Communication Services (ACS)** — enterprise PSTN with Call Automation (default)
+   - **Twilio** — PSTN via Twilio Media Streams with webhook signature validation
+   - **Infobip** — PSTN via Infobip Calls API with WebSocket audio streaming
+-  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
+   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
++  - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
++  - **Bandwidth** — PSTN via Bandwidth Programmable Voice with bidirectional media streaming (BXML)
+ 
+   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
+ - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
+@@ -166,8 +167,8 @@ To change the `azd` parameters from the default values, follow the steps [here](
+ 
+     The setup wizard will then guide you through:
+     - **Model selection** — choose from 12 fully managed models across Pro, Basic, and Lite tiers (or bring your own)
+-    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Sinch, or Genesys
+-    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Sinch, or Genesys
++    - **Telephony provider selection** — choose ACS (default), Twilio, Infobip, Sinch, Genesys, or Bandwidth
++    - **Credential entry** — securely prompts for tokens/keys only if you picked Twilio, Infobip, Sinch, Genesys, or Bandwidth
+ 
+     After provisioning completes, you'll see a deployment summary with your webhook endpoint(s) and next steps.
+ 
+@@ -447,6 +448,53 @@ For protocol details, see the [Genesys AudioHook developer documentation](https:
+ 2. The caller's audio streams to the server, which bridges it to Azure Voice Live
+ 3. The AI response audio is streamed back to Genesys Cloud for the caller to hear
+ 
++### 📞 Telephony with Bandwidth Client (Call Center Scenario)
++
++Inbound calls are handled via [Bandwidth Programmable Voice](https://dev.bandwidth.com/docs/voice/) — when a call arrives, the server returns [BXML](https://dev.bandwidth.com/docs/voice/bxml/) that opens a bidirectional media stream, then bridges the caller's audio to Azure Voice Live over a WebSocket.
++
++```
++Caller → PSTN → Bandwidth → BXML media stream → Container App → Voice Live AI
++```
++
++#### 1. Prerequisites
++
++- A [Bandwidth account](https://www.bandwidth.com/) with **Programmable Voice** enabled
++- A phone number in your [Bandwidth Dashboard](https://dashboard.bandwidth.com)
++- OAuth 2.0 API credentials — a **Client ID** and **Client Secret**
++
++> Bandwidth's legacy API User (username/password Basic Auth) scheme is deprecated. New accounts authenticate with **OAuth 2.0 Client Credentials** (Client ID / Client Secret). During `azd up`, the setup wizard prompts for these and stores the secret securely in Azure Key Vault.
++
++| Variable | Description | Where to find it |
++|----------|-------------|------------------|
++| `BANDWIDTH_ACCOUNT_ID` | Your numeric Bandwidth Account ID (used in every API path) | [Bandwidth Dashboard](https://dashboard.bandwidth.com) → Account |
++| `BANDWIDTH_CLIENT_ID` | OAuth 2.0 Client ID (starts with `CLI-`) | Dashboard → Account → **API Credentials** |
++| `BANDWIDTH_CLIENT_SECRET` | OAuth 2.0 Client Secret | Dashboard → Account → **API Credentials** (shown once at creation) |
++
++#### 2. Voice Application (Automatic)
++
++The Bandwidth **Voice-V2 Application** and its callback URL are **configured automatically** by the post-deploy script during `azd up`:
++- **Call-initiated callback URL:** `https://<your-container-app-url>/bandwidth/incoming` (POST)
++- **Callback credentials:** HTTP Basic auth using your Client ID / Client Secret
++
++The script prints the resulting `ApplicationId`, which is also saved to your `azd` environment as `BANDWIDTH_APPLICATION_ID`.
++
++> **Automatic fallback for trial / self-service accounts:** Bandwidth does not allow re-binding a phone number to a different application through the API on these accounts (confirmed by Bandwidth support — it is a platform limitation). On such accounts the number stays bound to the pre-provisioned `default-http-voice` application, whose callback points at a Bandwidth sample endpoint (you'd hear a canned greeting, then the call drops). To work around this, the post-deploy script re-points that Bandwidth-provided default application's callback URL at your container. It only touches Bandwidth-owned sample apps (never your own third-party applications), so inbound calls reach your voice agent without any manual number re-binding.
++
++#### 3. Associate a Number and Enable Inbound Calling (Manual)
++
++On **standard accounts**, Bandwidth binds phone numbers to applications through their own dashboard/API rather than through this template. Point your number at the `voice-agent-accelerator` application (the `ApplicationId` from step 2) following the [Bandwidth documentation](https://dev.bandwidth.com/docs/voice/). On **trial / self-service accounts** this is handled automatically — see the fallback note above — so you can skip this step.
++
++> **Trial accounts:** Inbound calls may be rejected with SIP `402 Payment Required` even when routing is correct. This is an account **billing/activation** state, not a code or configuration issue — confirm your account is activated for *Inbound Voice*, or contact Bandwidth support.
++
++#### 4. Call the Agent
++
++Dial your Bandwidth phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
++
++**How it works:**
++1. Bandwidth sends a call callback to `/bandwidth/incoming` — the server validates the Basic auth credentials and returns BXML that starts a bidirectional media stream
++2. Bandwidth opens a WebSocket to `/bandwidth/ws` — the server verifies the embedded token, then bridges audio to Azure Voice Live
++3. The caller's audio (PCMU 8kHz) is upsampled to PCM 24kHz for Voice Live; the AI response is streamed back through the same connection
++
+ ## Local Development
+ 
+ Once the environment has been deployed with `azd up` you can also run the application locally.
+diff --git a/azure.yaml b/azure.yaml
+index 5d0ea84..e5db765 100644
+--- a/azure.yaml
++++ b/azure.yaml
+@@ -42,7 +42,11 @@ pipeline:
+     - TWILIO_ACCOUNT_SID
+     - INFOBIP_API_BASE_URL
+     - SINCH_APPLICATION_KEY
++    - BANDWIDTH_ACCOUNT_ID
++    - BANDWIDTH_CLIENT_ID
++    - BANDWIDTH_APPLICATION_ID
+   secrets:
+     - TWILIO_AUTH_TOKEN
+     - INFOBIP_API_KEY
+-    - SINCH_APPLICATION_SECRET
+\ No newline at end of file
++    - SINCH_APPLICATION_SECRET
++    - BANDWIDTH_CLIENT_SECRET
+\ No newline at end of file
+diff --git a/hooks/predeploy.ps1 b/hooks/predeploy.ps1
+index 510a58f..dc1e0ad 100644
+--- a/hooks/predeploy.ps1
++++ b/hooks/predeploy.ps1
+@@ -15,6 +15,8 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
+     if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
+     $sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
+     if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
++    $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
++    if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
+ 
+     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
+         azd env set TELEPHONY_PROVIDER twilio
+@@ -32,6 +34,10 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
+         azd env set TELEPHONY_PROVIDER sinch
+         Write-Host "TELEPHONY_PROVIDER set to: sinch" -ForegroundColor Green
+     }
++    elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
++        azd env set TELEPHONY_PROVIDER bandwidth
++        Write-Host "TELEPHONY_PROVIDER set to: bandwidth" -ForegroundColor Green
++    }
+     else {
+         azd env set TELEPHONY_PROVIDER acs
+         Write-Host "TELEPHONY_PROVIDER set to: acs (default)" -ForegroundColor Green
+diff --git a/hooks/preprovision.ps1 b/hooks/preprovision.ps1
+index 969e5ec..e993a50 100644
+--- a/hooks/preprovision.ps1
++++ b/hooks/preprovision.ps1
+@@ -145,8 +145,10 @@ $genesysKey = azd env get-value GENESYS_API_KEY 2>$null
+ if ($LASTEXITCODE -ne 0) { $genesysKey = "" }
+ $sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
+ if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
++$bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
++if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
+ 
+-if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($sinchKey)) {
++if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($sinchKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+     Write-Host ""
+     Write-Host "Telephony Provider Selection" -ForegroundColor Yellow
+     Write-Host "----------------------------"
+@@ -157,6 +159,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
+     Write-Host "  [3] Infobip (requires API Key + Base URL)"
+     Write-Host "  [4] Genesys AudioHook Audio Connector (requires API Key)"
+     Write-Host "  [5] Sinch (requires Application Key + Secret)"
++    Write-Host "  [6] Bandwidth Programmable Voice (requires Account ID + Client ID + Secret)"
+     Write-Host ""
+     $choice = Read-Host "Select provider [1]"
+     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
+@@ -268,6 +271,93 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
+             Write-Host ""
+             Write-Host "After deployment, the post-deploy script will show the callback URL to configure in the Sinch dashboard." -ForegroundColor Cyan
+         }
++        "6" {
++            Write-Host ""
++            Write-Host "Bandwidth Programmable Voice" -ForegroundColor Yellow
++            Write-Host "Provide your OAuth 2.0 API credentials (Client ID + Client Secret). The Account"
++            Write-Host "ID is required in every API path; the Voice Application and callback URL are"
++            Write-Host "configured automatically post-deploy."
++            Write-Host ""
++            $bwAccountId = Read-Host "Enter Bandwidth Account ID"
++            if ([string]::IsNullOrWhiteSpace($bwAccountId)) {
++                Write-Host "ERROR: Account ID is required." -ForegroundColor Red
++                exit 1
++            }
++            $bwToken = Read-Host "Enter Bandwidth Client ID"
++            if ([string]::IsNullOrWhiteSpace($bwToken)) {
++                Write-Host "ERROR: Client ID is required." -ForegroundColor Red
++                exit 1
++            }
++            $bwSecret = Read-Host "Enter Bandwidth Client Secret" -AsSecureString
++            $bwSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($bwSecret))
++            if ([string]::IsNullOrWhiteSpace($bwSecretPlain)) {
++                Write-Host "ERROR: Client Secret is required." -ForegroundColor Red
++                exit 1
++            }
++            # Validate credentials via the Bandwidth OAuth 2.0 token endpoint
++            # (client_credentials grant). The legacy username/password Basic Auth
++            # scheme is deprecated and no longer provisionable. The two calls are
++            # kept in separate try/catch blocks so we can tell whether the token
++            # exchange itself failed (bad Client ID/Secret) or the account access
++            # check failed (credential lacks the right roles/accounts).
++            Write-Host "Validating Bandwidth credentials..." -ForegroundColor Gray
++            $bwAuthHeader = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${bwToken}:${bwSecretPlain}"))
++
++            # --- Step 1: exchange Client ID/Secret for an OAuth bearer token ---
++            $bwAccessToken = ""
++            try {
++                $bwTokenResp = Invoke-RestMethod -Uri "https://api.bandwidth.com/api/v1/oauth2/token" `
++                    -Headers @{ Authorization = "Basic $bwAuthHeader" } -Method Post `
++                    -ContentType "application/x-www-form-urlencoded" `
++                    -Body "grant_type=client_credentials" -ErrorAction Stop
++                $bwAccessToken = $bwTokenResp.access_token
++            }
++            catch {
++                $status = $_.Exception.Response.StatusCode.value__
++                Write-Host "ERROR: OAuth token exchange failed (HTTP $status) at api.bandwidth.com/api/v1/oauth2/token." -ForegroundColor Red
++                if ($status -eq 401) {
++                    Write-Host "  The Client ID or Client Secret is incorrect, the credential is inactive," -ForegroundColor Gray
++                    Write-Host "  or the secret has expired. Recreate/rotate it under Account > API Credentials." -ForegroundColor Gray
++                }
++                exit 1
++            }
++            if ([string]::IsNullOrWhiteSpace($bwAccessToken)) {
++                Write-Host "ERROR: Bandwidth token response did not contain an access_token." -ForegroundColor Red
++                exit 1
++            }
++            Write-Host "OAuth token obtained." -ForegroundColor Green
++
++            # --- Step 2: confirm the token can reach the target account ---
++            try {
++                Invoke-RestMethod -Uri "https://api.bandwidth.com/api/accounts/$bwAccountId/applications" `
++                    -Headers @{ Authorization = "Bearer $bwAccessToken" } -Method Get `
++                    -ContentType "application/xml" -ErrorAction Stop | Out-Null
++                Write-Host "Bandwidth account verified: $bwAccountId" -ForegroundColor Green
++            }
++            catch {
++                $status = $_.Exception.Response.StatusCode.value__
++                if ($status -eq 401 -or $status -eq 403) {
++                    Write-Host "ERROR: The credential authenticated, but lacks access to account '$bwAccountId' (HTTP $status)." -ForegroundColor Red
++                    Write-Host "  Edit the API Credential (Account > API Credentials) and ensure it includes" -ForegroundColor Gray
++                    Write-Host "  this account and a role granting Dashboard/Numbers (application) access." -ForegroundColor Gray
++                }
++                elseif ($status -eq 404) {
++                    Write-Host "ERROR: Bandwidth Account ID '$bwAccountId' not found (404)." -ForegroundColor Red
++                }
++                else {
++                    Write-Host "ERROR: Failed to validate Bandwidth account access (HTTP $status)." -ForegroundColor Red
++                }
++                exit 1
++            }
++            azd env set BANDWIDTH_ACCOUNT_ID $bwAccountId
++            azd env set BANDWIDTH_CLIENT_ID $bwToken
++            azd env set BANDWIDTH_CLIENT_SECRET $bwSecretPlain
++            azd env set TELEPHONY_PROVIDER bandwidth
++            Write-Host "Bandwidth configured." -ForegroundColor Green
++            Write-Host ""
++            Write-Host "After deployment, the post-deploy script will create/point the Voice application" -ForegroundColor Cyan
++            Write-Host "at your container app. You then associate a phone number's Location with it." -ForegroundColor Cyan
++        }
+         default {
+             azd env set TELEPHONY_PROVIDER acs
+             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green
+@@ -291,6 +381,10 @@ else {
+         azd env set TELEPHONY_PROVIDER sinch
+         Write-Host "Telephony: Sinch (credentials detected)" -ForegroundColor Green
+     }
++    elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
++        azd env set TELEPHONY_PROVIDER bandwidth
++        Write-Host "Telephony: Bandwidth (credentials detected)" -ForegroundColor Green
++    }
+     else {
+         azd env set TELEPHONY_PROVIDER acs
+     }
+diff --git a/hooks/providers/bandwidth.postdeploy.ps1 b/hooks/providers/bandwidth.postdeploy.ps1
+new file mode 100644
+index 0000000..20407cf
+--- /dev/null
++++ b/hooks/providers/bandwidth.postdeploy.ps1
+@@ -0,0 +1,206 @@
++<#
++.SYNOPSIS
++    Post-deploy: Bandwidth — finds/creates a Voice-V2 Application and points its
++    call-initiated callback at the deployed container app via the Bandwidth
++    Account Management API (XML). Also sets Basic Auth callback credentials so
++    incoming webhooks are authenticated.
++
++    Authenticates to the Bandwidth API using OAuth 2.0 Client Credentials
++    (Client ID / Client Secret). The legacy API User (username/password Basic
++    Auth) scheme is deprecated and cannot be provisioned on new accounts.
++
++    Requires (set via azd env): BANDWIDTH_ACCOUNT_ID, BANDWIDTH_CLIENT_ID, BANDWIDTH_CLIENT_SECRET
++#>
++
++$accountId = azd env get-value BANDWIDTH_ACCOUNT_ID 2>$null
++if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($accountId)) {
++    Write-Host "ERROR: BANDWIDTH_ACCOUNT_ID not set." -ForegroundColor Red
++    exit 0
++}
++
++$clientId = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
++if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($clientId)) {
++    Write-Host "ERROR: BANDWIDTH_CLIENT_ID not set." -ForegroundColor Red
++    exit 0
++}
++
++$clientSecret = azd env get-value BANDWIDTH_CLIENT_SECRET 2>$null
++if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($clientSecret)) {
++    Write-Host "ERROR: BANDWIDTH_CLIENT_SECRET not set." -ForegroundColor Red
++    exit 0
++}
++
++# --- Determine the container app webhook URL ---
++$endpoints = azd env get-value SERVICE_API_ENDPOINTS 2>$null
++if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($endpoints)) {
++    $webhookUrl = @($endpoints | ConvertFrom-Json)[0]
++}
++if ([string]::IsNullOrWhiteSpace($webhookUrl)) {
++    Write-Host "ERROR: Could not determine webhook URL." -ForegroundColor Red
++    exit 0
++}
++
++# --- Obtain an OAuth 2.0 bearer token (grant_type=client_credentials) ---
++$basic = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${clientId}:${clientSecret}"))
++try {
++    $tokenResp = Invoke-RestMethod -Uri "https://api.bandwidth.com/api/v1/oauth2/token" `
++        -Method Post -Headers @{ Authorization = "Basic $basic" } `
++        -ContentType "application/x-www-form-urlencoded" `
++        -Body "grant_type=client_credentials" -ErrorAction Stop
++    $accessToken = $tokenResp.access_token
++}
++catch {
++    Write-Host "ERROR: Failed to obtain a Bandwidth OAuth token. Check BANDWIDTH_CLIENT_ID/SECRET." -ForegroundColor Red
++    exit 0
++}
++if ([string]::IsNullOrWhiteSpace($accessToken)) {
++    Write-Host "ERROR: Bandwidth OAuth token response did not contain an access_token." -ForegroundColor Red
++    exit 0
++}
++
++$apiBase = "https://api.bandwidth.com/api/accounts/$accountId/applications"
++$headers = @{ Authorization = "Bearer $accessToken" }
++$appName = "voice-agent-accelerator"
++
++function New-VoiceApplicationXml {
++    param([string]$Name, [string]$CallbackUrl, [string]$UserId, [string]$Password)
++    return @"
++<Application>
++    <ServiceType>Voice-V2</ServiceType>
++    <AppName>$Name</AppName>
++    <CallInitiatedCallbackUrl>$CallbackUrl</CallInitiatedCallbackUrl>
++    <CallInitiatedMethod>POST</CallInitiatedMethod>
++    <CallbackCreds>
++        <UserId>$UserId</UserId>
++        <Password>$Password</Password>
++    </CallbackCreds>
++</Application>
++"@
++}
++
++# --- Step 1: List existing applications and look for ours ---
++$existingApp = $null
++$applicationId = azd env get-value BANDWIDTH_APPLICATION_ID 2>$null
++if ($LASTEXITCODE -ne 0) { $applicationId = "" }
++
++try {
++    [xml]$listResp = Invoke-RestMethod -Uri $apiBase -Headers $headers -Method Get -ContentType "application/xml" -ErrorAction Stop
++    $apps = @($listResp.ApplicationProvisioningResponse.ApplicationList.Application)
++    foreach ($a in $apps) {
++        if ($a.ServiceType -ne "Voice-V2") { continue }
++        if ((-not [string]::IsNullOrWhiteSpace($applicationId) -and $a.ApplicationId -eq $applicationId) `
++                -or $a.AppName -eq $appName `
++                -or $a.CallInitiatedCallbackUrl -eq $webhookUrl) {
++            $existingApp = $a
++            break
++        }
++    }
++}
++catch {
++    Write-Host "Failed to list Bandwidth applications. Configure the Voice application manually:" -ForegroundColor Yellow
++    Write-Host "  Call-initiated callback URL : $webhookUrl (POST)" -ForegroundColor Green
++    Write-Host "  Callback credentials         : UserId=<Client ID>, Password=<Client Secret>" -ForegroundColor Green
++    exit 0
++}
++
++# --- Step 2: Create or update the Voice application ---
++try {
++    if ($null -ne $existingApp) {
++        $applicationId = $existingApp.ApplicationId
++        if ($existingApp.CallInitiatedCallbackUrl -eq $webhookUrl) {
++            Write-Host ""
++            Write-Host "Bandwidth Voice application already configured." -ForegroundColor Green
++            Write-Host "  ApplicationId : $applicationId" -ForegroundColor Gray
++            Write-Host "  Callback URL  : $webhookUrl" -ForegroundColor Gray
++        }
++        else {
++            $body = New-VoiceApplicationXml -Name $appName -CallbackUrl $webhookUrl -UserId $clientId -Password $clientSecret
++            Invoke-RestMethod -Uri "$apiBase/$applicationId" -Headers $headers -Method Put `
++                -Body $body -ContentType "application/xml" -ErrorAction Stop | Out-Null
++            Write-Host ""
++            Write-Host "Bandwidth Voice application updated." -ForegroundColor Green
++            Write-Host "  ApplicationId : $applicationId" -ForegroundColor Gray
++            Write-Host "  Callback URL  : $webhookUrl" -ForegroundColor Gray
++        }
++    }
++    else {
++        $body = New-VoiceApplicationXml -Name $appName -CallbackUrl $webhookUrl -UserId $clientId -Password $clientSecret
++        [xml]$createResp = Invoke-RestMethod -Uri $apiBase -Headers $headers -Method Post `
++            -Body $body -ContentType "application/xml" -ErrorAction Stop
++        $applicationId = $createResp.ApplicationProvisioningResponse.Application.ApplicationId
++        Write-Host ""
++        Write-Host "Bandwidth Voice application created." -ForegroundColor Green
++        Write-Host "  ApplicationId : $applicationId" -ForegroundColor Gray
++        Write-Host "  Callback URL  : $webhookUrl" -ForegroundColor Gray
++    }
++
++    # Persist the application ID for subsequent deploys / container config.
++    if (-not [string]::IsNullOrWhiteSpace($applicationId)) {
++        azd env set BANDWIDTH_APPLICATION_ID $applicationId 2>$null | Out-Null
++    }
++}
++catch {
++    Write-Host "Failed to create/update the Bandwidth application. Configure it manually:" -ForegroundColor Yellow
++    Write-Host "  Call-initiated callback URL : $webhookUrl (POST)" -ForegroundColor Green
++    Write-Host "  Callback credentials         : UserId=<Client ID>, Password=<Client Secret>" -ForegroundColor Green
++    exit 0
++}
++
++# --- Step 3: Re-point any Bandwidth-managed "default" Voice app at our container ---
++#
++# Trial / self-service (app.bandwidth.com "express") accounts pre-provision a
++# default Voice-V2 application (typically named "default-http-voice") whose
++# callback points at a Bandwidth sample endpoint (e.g. .../sampleCallback or
++# express.cx-accounts...). Purchased numbers are bound to THAT app, not ours,
++# and the classic Numbers/Sip-Peer API is often not authorized on trial
++# credentials (HTTP 401) so we cannot re-bind the number directly.
++#
++# Since a Voice app's callback URL IS writable, the reliable automated fix is to
++# re-point the default app's callback at our container. That way inbound calls
++# on the number reach us without touching number/Location bindings. We ONLY
++# touch apps whose callback is a Bandwidth-owned sample/express host, never a
++# user's own third-party app.
++$redirected = @()
++try {
++    [xml]$reList = Invoke-RestMethod -Uri $apiBase -Headers $headers -Method Get -ContentType "application/xml" -ErrorAction Stop
++    foreach ($a in @($reList.ApplicationProvisioningResponse.ApplicationList.Application)) {
++        if ($a.ServiceType -ne "Voice-V2") { continue }
++        if ($a.ApplicationId -eq $applicationId) { continue }          # skip our own app
++        if ($a.CallInitiatedCallbackUrl -eq $webhookUrl) { continue }   # already points at us
++        $cb = [string]$a.CallInitiatedCallbackUrl
++        $isBandwidthDefault = ($a.AppName -eq "default-http-voice") `
++            -or ($cb -match "sampleCallback") `
++            -or ($cb -match "express\.cx-accounts") `
++            -or ($cb -match "\.bandwidth\.com/")
++        if (-not $isBandwidthDefault) { continue }
++
++        $body = New-VoiceApplicationXml -Name $a.AppName -CallbackUrl $webhookUrl -UserId $clientId -Password $clientSecret
++        try {
++            Invoke-RestMethod -Uri "$apiBase/$($a.ApplicationId)" -Headers $headers -Method Put `
++                -Body $body -ContentType "application/xml" -ErrorAction Stop | Out-Null
++            $redirected += "$($a.AppName) ($($a.ApplicationId))"
++        }
++        catch {
++            Write-Host "Could not re-point default app $($a.AppName) ($($a.ApplicationId))." -ForegroundColor Yellow
++        }
++    }
++}
++catch {
++    # Non-fatal: fall through to manual guidance below.
++}
++
++if ($redirected.Count -gt 0) {
++    Write-Host ""
++    Write-Host "Re-pointed Bandwidth default Voice app(s) at your container:" -ForegroundColor Green
++    foreach ($r in $redirected) { Write-Host "  $r -> $webhookUrl" -ForegroundColor Gray }
++    Write-Host "  Numbers bound to these apps now reach your voice agent. Call your number to test." -ForegroundColor Gray
++    Write-Host ""
++}
++
++# --- Step 4: Number association guidance (classic accounts) ---
++Write-Host ""
++Write-Host "If your number is NOT bound to a Bandwidth default app (classic account):" -ForegroundColor White
++Write-Host "  Associate the number's Location with application $applicationId" -ForegroundColor Gray
++Write-Host "  in the Bandwidth Dashboard. Then call the number to" -ForegroundColor Gray
++Write-Host "  talk to your voice agent." -ForegroundColor Gray
++Write-Host ""
+diff --git a/infra/main.bicep b/infra/main.bicep
+index 1aedacc..1c14f71 100644
+--- a/infra/main.bicep
++++ b/infra/main.bicep
+@@ -35,7 +35,7 @@ param appExists bool
+ @description('The OpenAI model name')
+ param modelName string = 'gpt-4o-mini'
+ @description('The selected telephony provider')
+-@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch'])
++@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch', 'bandwidth'])
+ param telephonyProvider string = 'acs'
+ @secure()
+ @description('Twilio Auth Token for webhook signature validation')
+@@ -54,6 +54,16 @@ param sinchApplicationKey string = ''
+ @secure()
+ @description('Sinch Application Secret for callback signature validation')
+ param sinchApplicationSecret string = ''
++@secure()
++@description('Bandwidth OAuth 2.0 Client ID (used for API auth and webhook Basic Auth)')
++param bandwidthClientId string = ''
++@secure()
++@description('Bandwidth OAuth 2.0 Client Secret (used for API auth and webhook Basic Auth)')
++param bandwidthClientSecret string = ''
++@description('Bandwidth account ID (required in the API path for all calls)')
++param bandwidthAccountId string = ''
++@description('Bandwidth Voice Application ID (auto-populated by postdeploy if empty)')
++param bandwidthApplicationId string = ''
+ @description('Enable debug mode for verbose logging in the container app')
+ param debugMode bool = false
+ 
+@@ -141,6 +151,8 @@ module keyvault 'modules/keyvault.bicep' = {
+     genesysApiKey: genesysApiKey
+     sinchApplicationKey: sinchApplicationKey
+     sinchApplicationSecret: sinchApplicationSecret
++    bandwidthClientId: bandwidthClientId
++    bandwidthClientSecret: bandwidthClientSecret
+   }
+ }
+ 
+@@ -177,6 +189,10 @@ module containerapp 'modules/containerapp.bicep' = {
+     genesysApiKeySecretUri: keyvault.outputs.genesysApiKeyUri
+     sinchApplicationKeySecretUri: keyvault.outputs.sinchApplicationKeyUri
+     sinchApplicationSecretSecretUri: keyvault.outputs.sinchApplicationSecretUri
++    bandwidthClientIdSecretUri: keyvault.outputs.bandwidthClientIdUri
++    bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
++    bandwidthAccountId: bandwidthAccountId
++    bandwidthApplicationId: bandwidthApplicationId
+     logAnalyticsWorkspaceName: logAnalyticsName
+     debugMode: debugMode
+     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
+@@ -201,6 +217,7 @@ var providerEndpoints = {
+   infobip: 'https://${containerapp.outputs.containerAppFqdn}/infobip/incoming'
+   genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
+   sinch: 'https://${containerapp.outputs.containerAppFqdn}/sinch/callbacks'
++  bandwidth: 'https://${containerapp.outputs.containerAppFqdn}/bandwidth/incoming'
+ }
+ output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
+ output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint
+diff --git a/infra/main.parameters.json b/infra/main.parameters.json
+index 7d28e70..d592c17 100644
+--- a/infra/main.parameters.json
++++ b/infra/main.parameters.json
+@@ -35,6 +35,18 @@
+     "sinchApplicationSecret": {
+       "value": "${SINCH_APPLICATION_SECRET}"
+     },
++    "bandwidthClientId": {
++      "value": "${BANDWIDTH_CLIENT_ID}"
++    },
++    "bandwidthClientSecret": {
++      "value": "${BANDWIDTH_CLIENT_SECRET}"
++    },
++    "bandwidthAccountId": {
++      "value": "${BANDWIDTH_ACCOUNT_ID}"
++    },
++    "bandwidthApplicationId": {
++      "value": "${BANDWIDTH_APPLICATION_ID}"
++    },
+     "debugMode": {
+       "value": "${DEBUG_MODE=false}"
+     }
+diff --git a/infra/modules/containerapp.bicep b/infra/modules/containerapp.bicep
+index bb3b4c3..bdc1bbc 100644
+--- a/infra/modules/containerapp.bicep
++++ b/infra/modules/containerapp.bicep
+@@ -15,6 +15,10 @@ param infobipApiBaseUrl string = ''
+ param genesysApiKeySecretUri string = ''
+ param sinchApplicationKeySecretUri string = ''
+ param sinchApplicationSecretSecretUri string = ''
++param bandwidthClientIdSecretUri string = ''
++param bandwidthClientSecretSecretUri string = ''
++param bandwidthAccountId string = ''
++param bandwidthApplicationId string = ''
+ param logAnalyticsWorkspaceName string
+ param appInsightsConnectionString string = ''
+ @description('The name of the container image')
+@@ -119,6 +123,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
+             keyVaultUrl: sinchApplicationSecretSecretUri
+             identity: identityId
+           }
++        ] : [],
++        !empty(bandwidthClientIdSecretUri) ? [
++          {
++            name: 'bandwidth-client-id'
++            keyVaultUrl: bandwidthClientIdSecretUri
++            identity: identityId
++          }
++        ] : [],
++        !empty(bandwidthClientSecretSecretUri) ? [
++          {
++            name: 'bandwidth-client-secret'
++            keyVaultUrl: bandwidthClientSecretSecretUri
++            identity: identityId
++          }
+         ] : [])
+     }
+     template: {
+@@ -177,6 +195,24 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
+               name: 'SINCH_APPLICATION_SECRET'
+               secretRef: 'sinch-application-secret'
+             }
++          ] : [], !empty(bandwidthClientIdSecretUri) ? [
++            {
++              name: 'BANDWIDTH_CLIENT_ID'
++              secretRef: 'bandwidth-client-id'
++            }
++            {
++              name: 'BANDWIDTH_ACCOUNT_ID'
++              value: bandwidthAccountId
++            }
++            {
++              name: 'BANDWIDTH_APPLICATION_ID'
++              value: bandwidthApplicationId
++            }
++          ] : [], !empty(bandwidthClientSecretSecretUri) ? [
++            {
++              name: 'BANDWIDTH_CLIENT_SECRET'
++              secretRef: 'bandwidth-client-secret'
++            }
+           ] : [])
+           resources: {
+             cpu: json('2.0')
+diff --git a/infra/modules/keyvault.bicep b/infra/modules/keyvault.bicep
+index 5679332..8f701f5 100644
+--- a/infra/modules/keyvault.bicep
++++ b/infra/modules/keyvault.bicep
+@@ -13,6 +13,10 @@ param genesysApiKey string = ''
+ param sinchApplicationKey string = ''
+ @secure()
+ param sinchApplicationSecret string = ''
++@secure()
++param bandwidthClientId string = ''
++@secure()
++param bandwidthClientSecret string = ''
+ 
+ resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
+   name: keyVaultName
+@@ -83,11 +87,29 @@ resource sinchApplicationSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07
+   }
+ }
+ 
++resource bandwidthClientIdSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(bandwidthClientId)) {
++  parent: keyVault
++  name: 'BANDWIDTH-CLIENT-ID'
++  properties: {
++    value: bandwidthClientId
++  }
++}
++
++resource bandwidthClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(bandwidthClientSecret)) {
++  parent: keyVault
++  name: 'BANDWIDTH-CLIENT-SECRET'
++  properties: {
++    value: bandwidthClientSecret
++  }
++}
++
+ output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}' : ''
+ output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
+ output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
+ output genesysApiKeyUri string = !empty(genesysApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/GENESYS-API-KEY' : ''
+ output sinchApplicationKeyUri string = !empty(sinchApplicationKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-KEY' : ''
+ output sinchApplicationSecretUri string = !empty(sinchApplicationSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-SECRET' : ''
++output bandwidthClientIdUri string = !empty(bandwidthClientId) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-ID' : ''
++output bandwidthClientSecretUri string = !empty(bandwidthClientSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-SECRET' : ''
+ output keyVaultId string = keyVault.id
+ output keyVaultName string = keyVault.name
+diff --git a/server/Dockerfile b/server/Dockerfile
+index 7d87aae..6413649 100644
+--- a/server/Dockerfile
++++ b/server/Dockerfile
+@@ -3,7 +3,7 @@
+ ###############
+ FROM python:3.12-slim-bookworm AS builder
+ 
+-# Telephony provider: acs (default), twilio, infobip, genesys, or sinch
++# Telephony provider: acs (default), twilio, infobip, genesys, sinch or bandwidth.
+ ARG TELEPHONY=acs
+ 
+ # Install and configure UV, see https://docs.astral.sh/uv/ for more information
+diff --git a/server/app/providers/bandwidth/__init__.py b/server/app/providers/bandwidth/__init__.py
+new file mode 100644
+index 0000000..5c5dd51
+--- /dev/null
++++ b/server/app/providers/bandwidth/__init__.py
+@@ -0,0 +1,106 @@
++"""Bandwidth Programmable Voice provider route registration.
++
++Bandwidth Programmable Voice flow:
++1. Caller dials a Bandwidth number → Bandwidth POSTs a voice callback to /bandwidth/incoming
++2. We respond with BXML that opens a bidirectional <StartStream> to /bandwidth/ws
++3. Bandwidth connects the WebSocket and streams PCMU 8kHz audio (base64 JSON frames)
++4. We bridge that audio to Azure Voice Live and send playAudio events back
++"""
++
++import asyncio
++import logging
++
++from quart import request, websocket
++
++from app.call_loop import run_call_loop
++from app.call_manager import CallManager
++from app.logging_config import new_correlation_id
++from app.provider_registry import register_provider
++
++logger = logging.getLogger(__name__)
++
++
++@register_provider(
++    name="bandwidth",
++    display_name="Bandwidth",
++    detect_key="BANDWIDTH_CLIENT_ID",
++    required_config=[
++        "BANDWIDTH_CLIENT_ID",
++        "BANDWIDTH_CLIENT_SECRET",
++        "BANDWIDTH_ACCOUNT_ID",
++    ],
++)
++def register_bandwidth_routes(app, call_manager: CallManager):
++    """Register Bandwidth voice callback and WebSocket routes."""
++    import os
++
++    from app.providers.bandwidth.event_handler import BandwidthEventHandler
++    from app.providers.bandwidth.media_handler import BandwidthMediaHandler
++
++    # Load provider-specific config. Bandwidth uses OAuth 2.0 Client Credentials
++    # (Client ID / Client Secret); the legacy API User (username/password) scheme
++    # is deprecated and can no longer be provisioned on new accounts.
++    app.config["BANDWIDTH_ACCOUNT_ID"] = os.getenv("BANDWIDTH_ACCOUNT_ID", "")
++    app.config["BANDWIDTH_CLIENT_ID"] = os.getenv("BANDWIDTH_CLIENT_ID", "")
++    app.config["BANDWIDTH_CLIENT_SECRET"] = os.getenv("BANDWIDTH_CLIENT_SECRET", "")
++    app.config["BANDWIDTH_APPLICATION_ID"] = os.getenv("BANDWIDTH_APPLICATION_ID", "")
++
++    bandwidth_handler = BandwidthEventHandler(app.config)
++
++    @app.route("/bandwidth/incoming", methods=["POST"])
++    async def bandwidth_incoming_call():
++        """Handles incoming Bandwidth voice callbacks and returns streaming BXML."""
++        new_correlation_id()
++        logger.info("Bandwidth /bandwidth/incoming callback called")
++
++        # Validate the webhook Basic Auth credentials (if configured).
++        auth_header = request.headers.get("Authorization", "")
++        valid = bandwidth_handler.validate_webhook(auth_header)
++        if valid is None:
++            return "Service Unavailable", 503
++        if not valid:
++            return "Unauthorized", 401
++
++        try:
++            request_data = await request.get_json(force=True, silent=True) or {}
++        except Exception:
++            request_data = {}
++
++        host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
++        ws_url = host_url.replace("https://", "wss://") + "/bandwidth/ws"
++        bxml = bandwidth_handler.handle_voice_callback(request_data, ws_url)
++        return bxml, 200, {"Content-Type": "application/xml"}
++
++    @app.websocket("/bandwidth/ws")
++    async def bandwidth_ws():
++        """WebSocket endpoint for Bandwidth media streams to bridge to Voice Live."""
++        cid = new_correlation_id()
++        logger.info("Incoming Bandwidth media stream WebSocket connection")
++
++        handler = BandwidthMediaHandler(app.config)
++        handler.bandwidth_ws = websocket
++        handler.correlation_id = cid
++
++        if not await handler.authenticate_and_start():
++            return
++
++        call_id = handler.stream_id or cid
++        if not await call_manager.acquire(call_id, "bandwidth"):
++            await websocket.close(4429, "Too Many Connections")
++            return
++
++        await handler.init_websocket(websocket)
++        try:
++            await run_call_loop(
++                call_manager=call_manager,
++                call_id=call_id,
++                ws=websocket,
++                handler=handler,
++            )
++        except asyncio.CancelledError:
++            logger.info("Bandwidth WebSocket cancelled")
++        except Exception:
++            logger.exception("Bandwidth WebSocket connection closed")
++        finally:
++            await call_manager.release(call_id)
++            await handler.cleanup()
+diff --git a/server/app/providers/bandwidth/event_handler.py b/server/app/providers/bandwidth/event_handler.py
+new file mode 100644
+index 0000000..33ebe52
+--- /dev/null
++++ b/server/app/providers/bandwidth/event_handler.py
+@@ -0,0 +1,120 @@
++"""Handler for Bandwidth voice callbacks and BXML generation.
++
++Bandwidth Programmable Voice uses BXML (Bandwidth XML) verbs to control calls.
++On an incoming call we respond with a <StartStream> verb that opens a
++bidirectional WebSocket media stream, kept alive by <StopStream wait="true">.
++
++WebSocket audio is authenticated with a short-lived HMAC token passed as a
++<StreamParam>, validated by the media handler when the stream 'start' message
++arrives (mirrors the Twilio provider's approach).
++"""
++
++import base64
++import hashlib
++import hmac
++import logging
++import time
++from xml.sax.saxutils import quoteattr
++
++logger = logging.getLogger(__name__)
++
++# Stream name used for the bidirectional AI agent stream.
++_STREAM_NAME = "voice_agent"
++
++
++class BandwidthEventHandler:
++    """Validates Bandwidth webhooks and generates streaming BXML responses."""
++
++    def __init__(self, config):
++        self.account_id = config.get("BANDWIDTH_ACCOUNT_ID", "")
++        # OAuth 2.0 Client Credentials (Bandwidth's current auth model). The
++        # legacy API User username/password (Basic Auth) scheme is deprecated.
++        self.client_id = config.get("BANDWIDTH_CLIENT_ID", "")
++        self.client_secret = config.get("BANDWIDTH_CLIENT_SECRET", "")
++
++    # ------------------------------------------------------------------
++    # Webhook authentication (HTTP Basic Auth)
++    # ------------------------------------------------------------------
++
++    def validate_webhook(self, auth_header: str) -> bool | None:
++        """Validate the Basic Auth credentials on an incoming Bandwidth callback.
++
++        Bandwidth sends the username/password configured on the Voice Application's
++        CallbackCreds as an HTTP Basic Authorization header. postdeploy sets those
++        CallbackCreds to the Client ID/Secret pair, so we validate against them.
++
++        Returns True if valid, False if invalid, None if not configured (503).
++        """
++        if not self.client_secret:
++            # No secret configured — cannot validate. Treat as unavailable so we
++            # don't accept unauthenticated callbacks.
++            return None
++
++        if not auth_header.startswith("Basic "):
++            return False
++
++        try:
++            decoded = base64.b64decode(auth_header[len("Basic "):]).decode("utf-8")
++            username, _, password = decoded.partition(":")
++        except Exception:
++            return False
++
++        user_ok = hmac.compare_digest(username, self.client_id)
++        pass_ok = hmac.compare_digest(password, self.client_secret)
++        return user_ok and pass_ok
++
++    # ------------------------------------------------------------------
++    # WebSocket token (HMAC, short-lived) — validated by the media handler
++    # ------------------------------------------------------------------
++
++    def _generate_ws_token(self) -> str:
++        """Generate a short-lived HMAC token for WebSocket authentication."""
++        timestamp = str(int(time.time()))
++        sig = hmac.new(
++            self.client_secret.encode(), timestamp.encode(), hashlib.sha256
++        ).hexdigest()
++        return f"{timestamp}.{sig}"
++
++    # ------------------------------------------------------------------
++    # BXML generation
++    # ------------------------------------------------------------------
++
++    def handle_voice_callback(self, request_data: dict, ws_url: str) -> str:
++        """Return BXML for a Bandwidth voice callback.
++
++        Opens a bidirectional media stream for call-initiating events and returns
++        an empty response for lifecycle events (answer, disconnect, etc.).
++        """
++        event_type = str(request_data.get("eventType", "")).lower()
++        call_id = request_data.get("callId", "")
++        logger.info(
++            "[BandwidthEventHandler] Voice callback: eventType=%s, callId=%s",
++            event_type or "(none)",
++            call_id or "(none)",
++        )
++
++        # Lifecycle events that must not restart the stream.
++        if event_type in ("disconnect", "hangup", "bridgecomplete", "redirect"):
++            return '<?xml version="1.0" encoding="UTF-8"?>\n<Response/>'
++
++        return self.generate_stream_bxml(ws_url)
++
++    def generate_stream_bxml(self, ws_url: str) -> str:
++        """Generate BXML that opens a bidirectional media stream to Voice Live."""
++        token = self._generate_ws_token()
++        # quoteattr adds surrounding quotes and escapes XML special characters.
++        dest = quoteattr(ws_url)
++        name = quoteattr(_STREAM_NAME)
++        token_attr = quoteattr(token)
++        bxml = (
++            '<?xml version="1.0" encoding="UTF-8"?>\n'
++            "<Response>\n"
++            "    <SpeakSentence>Please wait while we connect you to our AI assistant.</SpeakSentence>\n"
++            f"    <StartStream name={name} mode=\"bidirectional\" tracks=\"inbound\" destination={dest}>\n"
++            f"        <StreamParam name=\"token\" value={token_attr} />\n"
++            "    </StartStream>\n"
++            f"    <StopStream name={name} wait=\"true\" />\n"
++            "</Response>"
++        )
++        logger.info("[BandwidthEventHandler] Returning stream BXML for: %s", ws_url)
++        return bxml
+diff --git a/server/app/providers/bandwidth/media_handler.py b/server/app/providers/bandwidth/media_handler.py
+new file mode 100644
+index 0000000..8eedb52
+--- /dev/null
++++ b/server/app/providers/bandwidth/media_handler.py
+@@ -0,0 +1,246 @@
++"""Handles Bandwidth media stream WebSocket and bridges audio to Azure Voice Live API.
++
++Bandwidth <StartStream> WebSocket protocol (JSON text frames):
++- start:  {"eventType":"start","metadata":{...},"streamParams":{"token":"..."}}
++- media:  {"eventType":"media","track":"inbound","payload":"<base64 PCMU>","sequenceNumber":"1"}
++- stop:   {"eventType":"stop","metadata":{...}}
++
++Inbound audio is PCMU/G711 8kHz (mu-law). Voice Live supports several audio
++formats; this template configures the default PCM 24kHz 16-bit mono, 
++so inbound mu-law is resampled to that. Outbound audio is sent back as 
++playAudio events using raw PCM 24kHz (audio/pcm;rate=24000),
++which avoids re-encoding the Voice Live output.
++"""
++
++import asyncio
++import audioop
++import base64
++import hashlib
++import hmac
++import json
++import logging
++import time
++
++from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
++
++logger = logging.getLogger(__name__)
++
++# Bandwidth streams mu-law (PCMU) 8000Hz; Voice Live is configured here for its
++# default PCM 24000Hz 16-bit mono format.
++BANDWIDTH_SAMPLE_RATE = 8000
++VOICELIVE_SAMPLE_RATE = 24000
++_TOKEN_TTL = 60
++# Max unexpected binary frames tolerated before the 'start' message. Prevents a
++# misbehaving peer from indefinitely refreshing the 30s auth timeout.
++_MAX_PRE_START_BINARY_FRAMES = 10
++
++
++class BandwidthMediaHandler(VoiceLiveMediaHandler):
++    """Bridges a Bandwidth media stream WebSocket to Azure Voice Live API.
++
++    Handles PCMU/PCM conversion, rate resampling, and the Bandwidth stream protocol.
++    """
++
++    def __init__(self, config):
++        super().__init__(config)
++        self.client_secret = config.get("BANDWIDTH_CLIENT_SECRET", "")
++        self.bandwidth_ws = None
++        self.correlation_id = None
++        self.stream_id = None
++        self.call_id = None
++        self._inbound_track = "inbound"
++        self._ratecv_state_in = None
++
++    # ------------------------------------------------------------------
++    # Authentication
++    # ------------------------------------------------------------------
++
++    def _verify_ws_token(self, token: str) -> bool:
++        """Verify a WebSocket token is valid and not expired."""
++        if not self.client_secret or not token:
++            return False
++        parts = token.split(".", 1)
++        if len(parts) != 2:
++            return False
++        timestamp_str, sig = parts
++        try:
++            timestamp = int(timestamp_str)
++        except ValueError:
++            return False
++        if time.time() - timestamp > _TOKEN_TTL:
++            return False
++        expected = hmac.new(
++            self.client_secret.encode(), timestamp_str.encode(), hashlib.sha256
++        ).hexdigest()
++        return hmac.compare_digest(sig, expected)
++
++    async def authenticate_and_start(self) -> bool:
++        """Wait for the Bandwidth 'start' message and validate the embedded token.
++
++        Returns True if authenticated, False if rejected (WebSocket already closed).
++        """
++        unexpected_binary_frames = 0
++        while True:
++            try:
++                msg = await asyncio.wait_for(self.bandwidth_ws.receive(), timeout=30)
++            except TimeoutError:
++                logger.warning("[BandwidthMediaHandler] Timed out waiting for start message")
++                await self.bandwidth_ws.close(4408, "Timeout")
++                return False
++            except Exception:
++                logger.info("[BandwidthMediaHandler] WebSocket closed before start message")
++                return False
++
++            if isinstance(msg, bytes):
++                unexpected_binary_frames += 1
++                logger.warning(
++                    "[BandwidthMediaHandler] Unexpected binary frame before start (%d/%d)",
++                    unexpected_binary_frames,
++                    _MAX_PRE_START_BINARY_FRAMES,
++                )
++                if unexpected_binary_frames >= _MAX_PRE_START_BINARY_FRAMES:
++                    logger.warning(
++                        "[BandwidthMediaHandler] Too many binary frames before start; rejecting"
++                    )
++                    await self.bandwidth_ws.close(4400, "Bad Request")
++                    return False
++                continue
++
++            try:
++                data = json.loads(msg)
++            except json.JSONDecodeError:
++                logger.warning("[BandwidthMediaHandler] Non-JSON message before start")
++                await self.bandwidth_ws.close(4400, "Bad Request")
++                return False
++
++            event = data.get("eventType")
++            if event == "start":
++                stream_params = data.get("streamParams", {}) or {}
++                token = stream_params.get("token", "")
++                if not self._verify_ws_token(token):
++                    logger.warning("[BandwidthMediaHandler] Invalid or expired stream token")
++                    await self.bandwidth_ws.close(4403, "Forbidden")
++                    return False
++                self._process_start(data)
++                return True
++
++            # Unexpected message before start
++            logger.warning("[BandwidthMediaHandler] Unexpected message before start: %s", event)
++            await self.bandwidth_ws.close(4400, "Bad Request")
++            return False
++
++    def _process_start(self, data: dict):
++        """Record stream metadata from the 'start' message."""
++        metadata = data.get("metadata", {}) or {}
++        self.stream_id = metadata.get("streamId")
++        self.call_id = metadata.get("callId")
++        tracks = metadata.get("tracks", []) or []
++        if tracks:
++            self._inbound_track = tracks[0].get("name", "inbound")
++        logger.info(
++            "[BandwidthMediaHandler] Stream started: streamId=%s, callId=%s, track=%s",
++            self.stream_id,
++            self.call_id,
++            self._inbound_track,
++        )
++
++    # ------------------------------------------------------------------
++    # Voice Live hooks
++    # ------------------------------------------------------------------
++
++    async def on_speech_started(self):
++        """Barge-in: clear Bandwidth playback buffer and local TTS buffer."""
++        await self._send_clear_to_bandwidth()
++        if self._ambient_mixer is not None:
++            async with self._tts_buffer_lock:
++                self._tts_output_buffer.clear()
++                self._tts_playback_started = False
++
++    async def on_transcript_done(self, transcript: str):
++        """No-op — Bandwidth has no transcript channel."""
++        pass
++
++    # ------------------------------------------------------------------
++    # Audio output to client — PCM 24kHz → playAudio event
++    # ------------------------------------------------------------------
++
++    async def _send_audio_to_client(self, audio_bytes: bytes):
++        """Send PCM 24kHz audio to Bandwidth as a playAudio event.
++
++        Bandwidth accepts audio/pcm;rate=24000 (mono, 16-bit, little-endian, signed)
++        and resamples it downstream, so no local re-encoding is needed.
++        """
++        if not self.bandwidth_ws:
++            return
++
++        payload_b64 = base64.b64encode(audio_bytes).decode("ascii")
++        msg = {
++            "eventType": "playAudio",
++            "media": {
++                "contentType": "audio/pcm;rate=24000;channels=1;bit-depth=16;endian=little;encoding=signed",
++                "payload": payload_b64,
++            },
++        }
++        try:
++            await self.bandwidth_ws.send(json.dumps(msg))
++        except Exception as e:
++            logger.debug("[BandwidthMediaHandler] Audio send failed: %s", e)
++
++    # ------------------------------------------------------------------
++    # Bandwidth message handling
++    # ------------------------------------------------------------------
++
++    async def on_message(self, message):
++        """Process one incoming Bandwidth WebSocket message."""
++        if isinstance(message, bytes):
++            logger.debug("[BandwidthMediaHandler] Ignoring unexpected binary frame")
++            return
++
++        try:
++            data = json.loads(message)
++        except json.JSONDecodeError:
++            logger.warning("[BandwidthMediaHandler] Non-JSON message received")
++            return
++
++        event = data.get("eventType")
++
++        match event:
++            case "start":
++                # Already handled in authenticate_and_start, but tolerate a repeat.
++                self._process_start(data)
++
++            case "media":
++                track = data.get("track", self._inbound_track)
++                if track != self._inbound_track:
++                    return  # Only forward the caller's (inbound) audio
++                payload = data.get("payload", "")
++                if payload and self._voicelive_connected:
++                    pcmu_bytes = base64.b64decode(payload)
++                    await self.handle_audio(pcmu_bytes)
++
++            case "stop":
++                logger.info("[BandwidthMediaHandler] Stream stopped: streamId=%s", self.stream_id)
++
++            case _:
++                logger.debug("[BandwidthMediaHandler] Unknown event: %s", event)
++
++    # ------------------------------------------------------------------
++    # Inbound audio — PCMU 8kHz → PCM 24kHz
++    # ------------------------------------------------------------------
++
++    def _receive_audio_from_client(self, data) -> tuple:
++        """Convert Bandwidth mu-law/8kHz bytes to PCM 24kHz."""
++        pcm_8k = audioop.ulaw2lin(data, 2)
++        pcm_24k, self._ratecv_state_in = audioop.ratecv(
++            pcm_8k, 2, 1, BANDWIDTH_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, self._ratecv_state_in
++        )
++        return pcm_24k, len(pcm_24k)
++
++    async def _send_clear_to_bandwidth(self):
++        """Send a clear event to Bandwidth to discard buffered playback audio."""
++        if not self.bandwidth_ws:
++            return
++        try:
++            await self.bandwidth_ws.send(json.dumps({"eventType": "clear"}))
++        except Exception as e:
++            logger.debug("[BandwidthMediaHandler] Clear send failed: %s", e)
+diff --git a/server/pyproject.toml b/server/pyproject.toml
+index d72d2b1..252b118 100644
+--- a/server/pyproject.toml
++++ b/server/pyproject.toml
+@@ -32,5 +32,6 @@ twilio = [
+ infobip = []
+ genesys = []
+ sinch = []
++bandwidth = []
+ 
+ [tool.uv]
+\ No newline at end of file
+diff --git a/server/uv.lock b/server/uv.lock
+index 8cb2b07..d812357 100644
+--- a/server/uv.lock
++++ b/server/uv.lock
+@@ -1434,7 +1434,7 @@ requires-dist = [
+     { name = "urllib3", specifier = ">=2.7.0" },
+     { name = "websockets", specifier = ">=15.0.1" },
+ ]
+-provides-extras = ["acs", "twilio", "infobip", "genesys", "sinch"]
++provides-extras = ["acs", "twilio", "infobip", "genesys", "sinch", "bandwidth"]
+ 
+ [[package]]
+ name = "websockets"
