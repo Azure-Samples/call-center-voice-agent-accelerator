@@ -30,6 +30,9 @@ logger = logging.getLogger(__name__)
 BANDWIDTH_SAMPLE_RATE = 8000
 VOICELIVE_SAMPLE_RATE = 24000
 _TOKEN_TTL = 60
+# Max unexpected binary frames tolerated before the 'start' message. Prevents a
+# misbehaving peer from indefinitely refreshing the 30s auth timeout.
+_MAX_PRE_START_BINARY_FRAMES = 10
 
 
 class BandwidthMediaHandler(VoiceLiveMediaHandler):
@@ -76,6 +79,7 @@ class BandwidthMediaHandler(VoiceLiveMediaHandler):
 
         Returns True if authenticated, False if rejected (WebSocket already closed).
         """
+        unexpected_binary_frames = 0
         while True:
             try:
                 msg = await asyncio.wait_for(self.bandwidth_ws.receive(), timeout=30)
@@ -88,7 +92,18 @@ class BandwidthMediaHandler(VoiceLiveMediaHandler):
                 return False
 
             if isinstance(msg, bytes):
-                logger.warning("[BandwidthMediaHandler] Unexpected binary frame before start")
+                unexpected_binary_frames += 1
+                logger.warning(
+                    "[BandwidthMediaHandler] Unexpected binary frame before start (%d/%d)",
+                    unexpected_binary_frames,
+                    _MAX_PRE_START_BINARY_FRAMES,
+                )
+                if unexpected_binary_frames >= _MAX_PRE_START_BINARY_FRAMES:
+                    logger.warning(
+                        "[BandwidthMediaHandler] Too many binary frames before start; rejecting"
+                    )
+                    await self.bandwidth_ws.close(4400, "Bad Request")
+                    return False
                 continue
 
             try:
