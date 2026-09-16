@@ -84,7 +84,7 @@ class SinchEventHandler:
         # Content-MD5 is mandated by Sinch's callback signing scheme; MD5 here is a
         # protocol requirement, not a security primitive (usedforsecurity=False).
         content_md5 = base64.b64encode(
-            hashlib.md5(body, usedforsecurity=False).digest()
+            hashlib.md5(body, usedforsecurity=False).digest()  # CodeQL [SM02167] justification
         ).decode("ascii")
         string_to_sign = "\n".join(
             [
