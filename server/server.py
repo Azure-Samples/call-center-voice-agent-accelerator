@@ -1,4 +1,5 @@
 import asyncio
+import hmac
 import logging
 import os
 
@@ -34,6 +35,31 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
+app.config["GENESYS_VOICELIVE_FORMAT"] = os.getenv("GENESYS_VOICELIVE_FORMAT", "g711_ulaw")
+
+_default_model = app.config["VOICE_LIVE_MODEL"]
+
+# Web client authentication. The web WebSocket endpoint is publicly reachable,
+# so it is protected by a shared token configured at setup time. When WEB_ACCESS_TOKEN is unset the endpoint
+# is left open and a startup warning is logged.
+_web_access_token = os.getenv("WEB_ACCESS_TOKEN", "")
+if not _web_access_token:
+    logger.warning(
+        "WEB_ACCESS_TOKEN is not set — the /web/ws endpoint is UNAUTHENTICATED. "
+        "Set WEB_ACCESS_TOKEN to require a token (recommended for public deployments)."
+    )
+
+
+def _resolve_model(requested: str) -> str:
+    """Return the requested model, or the deploy default if none supplied."""
+    return (requested or "").strip() or _default_model
+
+
+def _validate_web_token(provided: str) -> bool:
+    """Validate the web client token. Open when no token is configured."""
+    if not _web_access_token:
+        return True
+    return bool(provided) and hmac.compare_digest(provided, _web_access_token)
 
 # Log ambient configuration on startup
 ambient_preset = app.config["AMBIENT_PRESET"]
@@ -109,12 +135,22 @@ async def web_ws():
     cid = new_correlation_id()
     logger.info("Incoming Web WebSocket connection")
 
+    # Validate the web access token (query param or header), when configured.
+    provided_token = websocket.args.get("token", "") or websocket.headers.get("X-Web-Token", "")
+    if not _validate_web_token(provided_token):
+        logger.warning("Invalid web access token — rejecting connection")
+        await websocket.accept()
+        await websocket.close(4403, "Invalid token")
+        return
+
     call_id = cid
     if not await call_manager.acquire(call_id, "web"):
         await websocket.close(4429, "Too Many Connections")
         return
 
     handler = VoiceLiveMediaHandler(app.config)
+    handler.model = _resolve_model(websocket.args.get("model", ""))
+    logger.info("Web session using model=%s", handler.model)
     await handler.init_websocket(websocket)
     try:
         await run_call_loop(

@@ -34,6 +34,9 @@ param location string
 param appExists bool
 @description('The OpenAI model name')
 param modelName string = 'gpt-4o-mini'
+@secure()
+@description('Shared access token required to use the public web (/web/ws) client (blank = endpoint left open)')
+param webAccessToken string = ''
 @description('The selected telephony provider')
 @allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch', 'bandwidth'])
 param telephonyProvider string = 'acs'
@@ -153,6 +156,7 @@ module keyvault 'modules/keyvault.bicep' = {
     sinchApplicationSecret: sinchApplicationSecret
     bandwidthClientId: bandwidthClientId
     bandwidthClientSecret: bandwidthClientSecret
+    webAccessToken: webAccessToken
   }
 }
 
@@ -191,6 +195,7 @@ module containerapp 'modules/containerapp.bicep' = {
     sinchApplicationSecretSecretUri: keyvault.outputs.sinchApplicationSecretUri
     bandwidthClientIdSecretUri: keyvault.outputs.bandwidthClientIdUri
     bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
+    webAccessTokenSecretUri: keyvault.outputs.webAccessTokenUri
     bandwidthAccountId: bandwidthAccountId
     bandwidthApplicationId: bandwidthApplicationId
     logAnalyticsWorkspaceName: logAnalyticsName

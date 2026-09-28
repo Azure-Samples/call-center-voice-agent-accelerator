@@ -17,6 +17,8 @@ param sinchApplicationSecret string = ''
 param bandwidthClientId string = ''
 @secure()
 param bandwidthClientSecret string = ''
+@secure()
+param webAccessToken string = ''
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
   name: keyVaultName
@@ -103,6 +105,14 @@ resource bandwidthClientSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-
   }
 }
 
+resource webAccessTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(webAccessToken)) {
+  parent: keyVault
+  name: 'WEB-ACCESS-TOKEN'
+  properties: {
+    value: webAccessToken
+  }
+}
+
 output acsConnectionStringUri string = !empty(acsConnectionString) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/${acsConnectionStringSecret.name}' : ''
 output twilioAuthTokenUri string = !empty(twilioAuthToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/TWILIO-AUTH-TOKEN' : ''
 output infobipApiKeyUri string = !empty(infobipApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/INFOBIP-API-KEY' : ''
@@ -111,5 +121,6 @@ output sinchApplicationKeyUri string = !empty(sinchApplicationKey) ? 'https://${
 output sinchApplicationSecretUri string = !empty(sinchApplicationSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/SINCH-APPLICATION-SECRET' : ''
 output bandwidthClientIdUri string = !empty(bandwidthClientId) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-ID' : ''
 output bandwidthClientSecretUri string = !empty(bandwidthClientSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-SECRET' : ''
+output webAccessTokenUri string = !empty(webAccessToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/WEB-ACCESS-TOKEN' : ''
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name

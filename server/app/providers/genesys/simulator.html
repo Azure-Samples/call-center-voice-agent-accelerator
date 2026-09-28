@@ -99,6 +99,8 @@
       <input type="text" id="orgId" placeholder="your-genesys-org-id" />
       <label for="ani">Caller ANI</label>
       <input type="text" id="ani" value="+1-555-555-1234" />
+      <label for="model">Voice Live Model (optional — for latency A/B)</label>
+      <input type="text" id="model" placeholder="e.g. gpt-realtime or gpt-4o (blank = deploy default)" />
     </div>
     <div class="panel">
       <h2>Audio Settings</h2>
@@ -236,7 +238,6 @@
       const wsUrl = document.getElementById("wsUrl").value;
 
       if (!apiKey) { alert("API Key is required"); return; }
-
       sessionId = crypto.randomUUID();
       clientSeq = 0;
       serverSeq = 0;
@@ -251,8 +252,9 @@
       // Create WebSocket with custom headers via URL params (since browser WS doesn't support custom headers)
       // For the simulator, we'll pass the API key as a query parameter that the server also accepts
       const urlWithAuth = wsUrl + (wsUrl.includes("?") ? "&" : "?") + "apikey=" + encodeURIComponent(apiKey);
-      socket = new WebSocket(urlWithAuth);
-      socket.binaryType = "arraybuffer";
+      const modelSel = document.getElementById("model").value.trim();
+      const finalUrl = modelSel ? urlWithAuth + "&model=" + encodeURIComponent(modelSel) : urlWithAuth;
+      socket = new WebSocket(finalUrl);      socket.binaryType = "arraybuffer";
 
       socket.onopen = async () => {
         log("WebSocket connected", "log-info");
