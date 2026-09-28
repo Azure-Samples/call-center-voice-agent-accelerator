@@ -38,7 +38,7 @@ param modelName string = 'gpt-4o-mini'
 @description('Shared access token required to use the public web (/web/ws) client (blank = endpoint left open)')
 param webAccessToken string = ''
 @description('The selected telephony provider')
-@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch', 'bandwidth'])
+@allowed(['acs', 'twilio', 'infobip', 'genesys', 'sinch', 'bandwidth', 'vonage'])
 param telephonyProvider string = 'acs'
 @secure()
 @description('Twilio Auth Token for webhook signature validation')
@@ -67,6 +67,17 @@ param bandwidthClientSecret string = ''
 param bandwidthAccountId string = ''
 @description('Bandwidth Voice Application ID (auto-populated by postdeploy if empty)')
 param bandwidthApplicationId string = ''
+@secure()
+@description('Vonage API Key (used for the Application API and WebSocket token signing fallback)')
+param vonageApiKey string = ''
+@secure()
+@description('Vonage API Secret (used for the Application API and WebSocket token signing fallback)')
+param vonageApiSecret string = ''
+@secure()
+@description('Vonage Signature Secret for signed-webhook validation and WebSocket token signing (optional)')
+param vonageSignatureSecret string = ''
+@description('Vonage Voice Application ID (used by postdeploy to configure Answer/Event URLs)')
+param vonageApplicationId string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
 
@@ -156,6 +167,9 @@ module keyvault 'modules/keyvault.bicep' = {
     sinchApplicationSecret: sinchApplicationSecret
     bandwidthClientId: bandwidthClientId
     bandwidthClientSecret: bandwidthClientSecret
+    vonageApiKey: vonageApiKey
+    vonageApiSecret: vonageApiSecret
+    vonageSignatureSecret: vonageSignatureSecret
     webAccessToken: webAccessToken
   }
 }
@@ -195,9 +209,13 @@ module containerapp 'modules/containerapp.bicep' = {
     sinchApplicationSecretSecretUri: keyvault.outputs.sinchApplicationSecretUri
     bandwidthClientIdSecretUri: keyvault.outputs.bandwidthClientIdUri
     bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
+    vonageApiKeySecretUri: keyvault.outputs.vonageApiKeyUri
+    vonageApiSecretSecretUri: keyvault.outputs.vonageApiSecretUri
+    vonageSignatureSecretSecretUri: keyvault.outputs.vonageSignatureSecretUri
     webAccessTokenSecretUri: keyvault.outputs.webAccessTokenUri
     bandwidthAccountId: bandwidthAccountId
     bandwidthApplicationId: bandwidthApplicationId
+    vonageApplicationId: vonageApplicationId
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
@@ -223,6 +241,7 @@ var providerEndpoints = {
   genesys: 'wss://${containerapp.outputs.containerAppFqdn}/audiohook/ws'
   sinch: 'https://${containerapp.outputs.containerAppFqdn}/sinch/callbacks'
   bandwidth: 'https://${containerapp.outputs.containerAppFqdn}/bandwidth/incoming'
+  vonage: 'https://${containerapp.outputs.containerAppFqdn}/vonage/answer'
 }
 output SERVICE_API_ENDPOINTS array = [providerEndpoints[telephonyProvider]]
 output AZURE_VOICE_LIVE_ENDPOINT string = aiServices.outputs.aiServicesEndpoint

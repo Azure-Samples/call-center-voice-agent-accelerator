@@ -147,8 +147,10 @@ $sinchKey = azd env get-value SINCH_APPLICATION_KEY 2>$null
 if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
 $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
 if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
+$vonageKey = azd env get-value VONAGE_API_KEY 2>$null
+if ($LASTEXITCODE -ne 0) { $vonageKey = "" }
 
-if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($sinchKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken)) {
+if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace($infobipKey) -and [string]::IsNullOrWhiteSpace($genesysKey) -and [string]::IsNullOrWhiteSpace($sinchKey) -and [string]::IsNullOrWhiteSpace($bandwidthToken) -and [string]::IsNullOrWhiteSpace($vonageKey)) {
     Write-Host ""
     Write-Host "Telephony Provider Selection" -ForegroundColor Yellow
     Write-Host "----------------------------"
@@ -160,6 +162,7 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
     Write-Host "  [4] Genesys AudioHook Audio Connector (requires API Key)"
     Write-Host "  [5] Sinch (requires Application Key + Secret)"
     Write-Host "  [6] Bandwidth Programmable Voice (requires Account ID + Client ID + Secret)"
+    Write-Host "  [7] Vonage (requires API Key + Secret; Application ID optional — auto-created)"
     Write-Host ""
     $choice = Read-Host "Select provider [1]"
     if ([string]::IsNullOrWhiteSpace($choice)) { $choice = "1" }
@@ -358,6 +361,53 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
             Write-Host "After deployment, the post-deploy script will create/point the Voice application" -ForegroundColor Cyan
             Write-Host "at your container app. You then associate a phone number's Location with it." -ForegroundColor Cyan
         }
+        "7" {
+            Write-Host ""
+            Write-Host "Vonage Voice (WebSocket streaming)" -ForegroundColor Yellow
+            Write-Host "Find the API Key and Secret in the Vonage dashboard under Settings. You do not"
+            Write-Host "need to create a Voice application — one is created automatically after deploy."
+            Write-Host ""
+            $vKey = Read-Host "Enter Vonage API Key"
+            if ([string]::IsNullOrWhiteSpace($vKey)) {
+                Write-Host "ERROR: API Key is required." -ForegroundColor Red
+                exit 1
+            }
+            $vSecret = Read-Host "Enter Vonage API Secret" -AsSecureString
+            $vSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($vSecret))
+            if ([string]::IsNullOrWhiteSpace($vSecretPlain)) {
+                Write-Host "ERROR: API Secret is required." -ForegroundColor Red
+                exit 1
+            }
+            # Validate credentials against the Vonage Account API (Basic auth).
+            Write-Host "Validating Vonage credentials..." -ForegroundColor Gray
+            $vAuthHeader = [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes("${vKey}:${vSecretPlain}"))
+            try {
+                Invoke-RestMethod -Uri "https://api.nexmo.com/v2/applications?page_size=1" `
+                    -Headers @{ Authorization = "Basic $vAuthHeader" } -Method Get -ErrorAction Stop | Out-Null
+                Write-Host "Vonage credentials validated." -ForegroundColor Green
+            }
+            catch {
+                $status = $_.Exception.Response.StatusCode.value__
+                if ($status -eq 401) {
+                    Write-Host "ERROR: Vonage credentials are invalid (401 Unauthorized)." -ForegroundColor Red
+                    exit 1
+                }
+                Write-Host "WARNING: Could not fully validate Vonage credentials (HTTP $status); continuing." -ForegroundColor Yellow
+            }
+            $vAppId = Read-Host "Enter Vonage Application ID (optional — press Enter and one will be created for you)"
+            $vSigSecret = Read-Host "Enter Vonage Signature Secret (optional, press Enter to skip)" -AsSecureString
+            $vSigSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($vSigSecret))
+            azd env set VONAGE_API_KEY $vKey
+            azd env set VONAGE_API_SECRET $vSecretPlain
+            if (-not [string]::IsNullOrWhiteSpace($vAppId)) { azd env set VONAGE_APPLICATION_ID $vAppId }
+            if (-not [string]::IsNullOrWhiteSpace($vSigSecretPlain)) { azd env set VONAGE_SIGNATURE_SECRET $vSigSecretPlain }
+            azd env set TELEPHONY_PROVIDER vonage
+            Write-Host "Vonage configured." -ForegroundColor Green
+            Write-Host ""
+            Write-Host "After deployment, the post-deploy script will create a Voice application (if you" -ForegroundColor Cyan
+            Write-Host "didn't supply one) and point its Answer/Event URLs at your container app. You then" -ForegroundColor Cyan
+            Write-Host "link a voice-capable number to that application in the Vonage dashboard." -ForegroundColor Cyan
+        }
         default {
             azd env set TELEPHONY_PROVIDER acs
             Write-Host "Using Azure Communication Services (will be provisioned automatically)." -ForegroundColor Green
@@ -384,6 +434,10 @@ else {
     elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
         azd env set TELEPHONY_PROVIDER bandwidth
         Write-Host "Telephony: Bandwidth (credentials detected)" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($vonageKey)) {
+        azd env set TELEPHONY_PROVIDER vonage
+        Write-Host "Telephony: Vonage (credentials detected)" -ForegroundColor Green
     }
     else {
         azd env set TELEPHONY_PROVIDER acs

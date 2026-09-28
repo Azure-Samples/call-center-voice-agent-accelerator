@@ -50,6 +50,18 @@
     "bandwidthApplicationId": {
       "value": "${BANDWIDTH_APPLICATION_ID}"
     },
+    "vonageApiKey": {
+      "value": "${VONAGE_API_KEY}"
+    },
+    "vonageApiSecret": {
+      "value": "${VONAGE_API_SECRET}"
+    },
+    "vonageSignatureSecret": {
+      "value": "${VONAGE_SIGNATURE_SECRET}"
+    },
+    "vonageApplicationId": {
+      "value": "${VONAGE_APPLICATION_ID}"
+    },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"
     }

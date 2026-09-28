@@ -33,5 +33,6 @@ infobip = []
 genesys = []
 sinch = []
 bandwidth = []
+vonage = []
 
 [tool.uv]

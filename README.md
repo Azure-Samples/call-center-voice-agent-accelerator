@@ -2,13 +2,13 @@
 | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Azure-Samples/call-center-voice-agent-accelerator) | [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/call-center-voice-agent-accelerator)
 |---|---|
 
-Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, **Genesys Cloud (AudioHook)**, and **Bandwidth**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
+Welcome to the *Call Center Real-time Voice Agent* solution accelerator — a lightweight template for building speech-to-speech voice agents powered by **Azure Voice Live API**. It supports multiple telephony providers out of the box, including **Azure Communication Services (ACS)**, **Twilio**, **Infobip**, **Sinch**, **Genesys Cloud (AudioHook)**, **Bandwidth**, and **Vonage**, plus a **web browser** client for quick testing. Bring your own telephony provider or use the built-in options. Start locally, deploy to Azure Container Apps.
 
 The Azure voice live API is a solution enabling low-latency, high-quality speech to speech interactions for voice agents. The API is designed for developers seeking scalable and efficient voice-driven experiences as it eliminates the need to manually orchestrate multiple components. By integrating speech recognition, generative AI, and text to speech functionalities into a single, unified interface, it provides an end-to-end solution for creating seamless experiences. Learn more about [Azure Voice Live API](https://learn.microsoft.com/azure/ai-services/speech-service/voice-live).
 
 The Azure Communication Services Calls Automation APIs provide telephony integration and real-time event triggers to perform actions based on custom business logic specific to their domain. Within the call automation APIs developers can use simple AI powered APIs, which can be used to play personalized greeting messages, recognize conversational voice inputs to gather information on contextual questions to drive a more self-service model with customers, use sentiment analysis to improve customer service overall. Learn more about [Azure Communication Services (Call Automation)](https://learn.microsoft.com/azure/communication-services/concepts/call-automation/call-automation).
 
-Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), and [Bandwidth](https://dev.bandwidth.com/docs/voice/).
+Alternatively, telephony integration is supported through third-party providers, including [Twilio](https://www.twilio.com/docs/voice/media-streams), [Infobip](https://www.infobip.com/docs/voice-and-video/calls), [Sinch](https://developers.sinch.com/docs/voice/), [Genesys Cloud (AudioHook)](https://developer.genesys.cloud/devapps/audiohook), [Bandwidth](https://dev.bandwidth.com/docs/voice/), and [Vonage](https://developer.vonage.com/en/voice/voice-api/guides/websockets).
 
 
 <div align="center">
@@ -36,6 +36,7 @@ The solution includes:
   - **Genesys Cloud** — AudioHook (Audio Connector) for real-time call audio streaming
   - **Sinch** — PSTN via Sinch Voice connectStream (closed beta) with WebSocket audio streaming
   - **Bandwidth** — PSTN via Bandwidth Programmable Voice with bidirectional media streaming (BXML)
+  - **Vonage** — PSTN via Vonage Voice API with native 24kHz PCM WebSocket audio streaming (NCCO)
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
@@ -478,11 +479,9 @@ The Bandwidth **Voice-V2 Application** and its callback URL are **configured aut
 
 The script prints the resulting `ApplicationId`, which is also saved to your `azd` environment as `BANDWIDTH_APPLICATION_ID`.
 
-> **Automatic fallback for trial / self-service accounts:** Bandwidth does not allow re-binding a phone number to a different application through the API on these accounts (confirmed by Bandwidth support — it is a platform limitation). On such accounts the number stays bound to the pre-provisioned `default-http-voice` application, whose callback points at a Bandwidth sample endpoint (you'd hear a canned greeting, then the call drops). To work around this, the post-deploy script re-points that Bandwidth-provided default application's callback URL at your container. It only touches Bandwidth-owned sample apps (never your own third-party applications), so inbound calls reach your voice agent without any manual number re-binding.
+#### 3. Associate a Number (Manual)
 
-#### 3. Associate a Number and Enable Inbound Calling (Manual)
-
-On **standard accounts**, Bandwidth binds phone numbers to applications through their own dashboard/API rather than through this template. Point your number at the `voice-agent-accelerator` application (the `ApplicationId` from step 2) following the [Bandwidth documentation](https://dev.bandwidth.com/docs/voice/). On **trial / self-service accounts** this is handled automatically — see the fallback note above — so you can skip this step.
+Point your Bandwidth phone number at the `voice-agent-accelerator` application (the `ApplicationId` from step 2) following the [Bandwidth documentation](https://dev.bandwidth.com/docs/voice/). Depending on your account type, the post-deploy script may handle number routing for you.
 
 > **Trial accounts:** Inbound calls may be rejected with SIP `402 Payment Required` even when routing is correct. This is an account **billing/activation** state, not a code or configuration issue — confirm your account is activated for *Inbound Voice*, or contact Bandwidth support.
 
@@ -494,6 +493,51 @@ Dial your Bandwidth phone number. The call connects to the real-time voice agent
 1. Bandwidth sends a call callback to `/bandwidth/incoming` — the server validates the Basic auth credentials and returns BXML that starts a bidirectional media stream
 2. Bandwidth opens a WebSocket to `/bandwidth/ws` — the server verifies the embedded token, then bridges audio to Azure Voice Live
 3. The caller's audio (PCMU 8kHz) is upsampled to PCM 24kHz for Voice Live; the AI response is streamed back through the same connection
+
+### 📞 Telephony with Vonage Client (Call Center Scenario)
+
+[Vonage Voice API](https://developer.vonage.com/en/voice/voice-api/guides/websockets) streams call audio to a WebSocket you control. Vonage supports **native 24kHz linear PCM** (`audio/l16;rate=24000`), the same format Voice Live uses — so audio passes through with no resampling, giving the lowest-latency third-party integration.
+
+```
+Caller → PSTN → Vonage → WebSocket (PCM 24kHz) → Container App → Voice Live AI
+```
+
+#### 1. Prerequisites
+
+- A [Vonage account](https://www.vonage.com/) with the **Voice API** enabled
+- A voice-capable phone number in your [Vonage Dashboard](https://dashboard.vonage.com)
+- Only your **API key + secret** are required. You do *not* need to pre-create a Voice application — the post-deploy script creates one for you if you don't supply an Application ID.
+
+| Variable | Description | Where to find it |
+|----------|-------------|------------------|
+| `VONAGE_API_KEY` | Your Vonage API key | [Vonage Dashboard](https://dashboard.vonage.com) → Settings |
+| `VONAGE_API_SECRET` | Your Vonage API secret | [Vonage Dashboard](https://dashboard.vonage.com) → Settings |
+| `VONAGE_APPLICATION_ID` | *(Optional)* Existing Voice application ID. Leave unset to have one created automatically. | Dashboard → Applications → your Voice app |
+| `VONAGE_SIGNATURE_SECRET` | *(Optional)* Signature secret for signed-webhook validation | Dashboard → Settings → Signature secret |
+
+> The one-time WebSocket token is signed with `VONAGE_SIGNATURE_SECRET` when set, otherwise with `VONAGE_API_SECRET`. Signed-webhook validation is enforced only when `VONAGE_SIGNATURE_SECRET` is configured; the WebSocket token gates every media session regardless.
+
+#### 2. Voice Application & Webhooks (Automatic)
+
+The post-deploy script configures Vonage automatically during `azd up` using the [Vonage Application API](https://developer.vonage.com/en/api/application.v2) (HTTP Basic auth with your API key + secret):
+
+- **If `VONAGE_APPLICATION_ID` is set**, it updates that application's webhooks.
+- **If it is not set**, it *creates* a new Voice application named `voice-agent-accelerator`, sets its webhooks, and saves the new ID back to your `azd` environment as `VONAGE_APPLICATION_ID` (so future deploys update rather than recreate it).
+
+Either way the webhooks are set to:
+- **Answer URL:** `https://<your-container-app-url>/vonage/answer` (GET) — returns an NCCO that connects the caller to `/vonage/ws`
+- **Event URL:** `https://<your-container-app-url>/vonage/events` (POST) — receives call lifecycle events
+
+The script also links your account's voice-capable number(s) to the application automatically, so inbound calls reach your voice agent with no manual dashboard steps. (If the number is already linked to a different application, it's left unchanged — link it in the [Vonage Dashboard](https://dashboard.vonage.com) if needed.)
+
+#### 3. Call the Agent
+
+Dial your Vonage phone number. The call connects to the real-time voice agent powered by Azure Voice Live.
+
+**How it works:**
+1. Vonage requests `/vonage/answer` — the server validates the (optional) signed webhook and returns an NCCO with a `connect`→`websocket` action carrying a one-time token and `content-type: audio/l16;rate=24000`
+2. Vonage opens a WebSocket to `/vonage/ws` — the server validates the token on the `websocket:connected` event, then bridges audio to Azure Voice Live
+3. Caller audio (PCM 24kHz) passes through directly to Voice Live; the AI response streams back the same way. Barge-in flushes Vonage's playback buffer with a `clear` command
 
 ## Local Development
 
