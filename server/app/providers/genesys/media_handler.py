@@ -58,9 +58,9 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         # Native 8kHz g711 mode: have Voice Live send/receive mu-law 8kHz
         # directly so we skip the 8k<->24k resampling round-trip (lower
         # latency, no quality loss). Configurable via GENESYS_VOICELIVE_FORMAT:
-        #   "g711_ulaw" (default) = native 8kHz, ambient mixing not available
-        #   "pcm16"               = legacy 8k<->24k resample, ambient supported
-        fmt = str(config.get("GENESYS_VOICELIVE_FORMAT", "g711_ulaw")).strip().lower()
+        #   "pcm16" (default)     = legacy 8k<->24k resample, ambient supported
+        #   "g711_ulaw" (opt-in)  = native 8kHz, ambient mixing not available
+        fmt = str(config.get("GENESYS_VOICELIVE_FORMAT", "pcm16")).strip().lower()
         self._native_8k = fmt in ("g711_ulaw", "g711", "ulaw", "8k")
         if self._native_8k:
             self.input_audio_format = InputAudioFormat.G711_ULAW

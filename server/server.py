@@ -35,7 +35,7 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
     "AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID", ""
 )
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
-app.config["GENESYS_VOICELIVE_FORMAT"] = os.getenv("GENESYS_VOICELIVE_FORMAT", "g711_ulaw")
+app.config["GENESYS_VOICELIVE_FORMAT"] = os.getenv("GENESYS_VOICELIVE_FORMAT", "pcm16")
 
 _default_model = app.config["VOICE_LIVE_MODEL"]
 

@@ -68,14 +68,11 @@ param bandwidthAccountId string = ''
 @description('Bandwidth Voice Application ID (auto-populated by postdeploy if empty)')
 param bandwidthApplicationId string = ''
 @secure()
-@description('Vonage API Key (used for the Application API and WebSocket token signing fallback)')
+@description('Vonage API Key (used for the Application API and WebSocket token signing)')
 param vonageApiKey string = ''
 @secure()
-@description('Vonage API Secret (used for the Application API and WebSocket token signing fallback)')
+@description('Vonage API Secret (used for the Application API and WebSocket token signing)')
 param vonageApiSecret string = ''
-@secure()
-@description('Vonage Signature Secret for signed-webhook validation and WebSocket token signing (optional)')
-param vonageSignatureSecret string = ''
 @description('Vonage Voice Application ID (used by postdeploy to configure Answer/Event URLs)')
 param vonageApplicationId string = ''
 @description('Enable debug mode for verbose logging in the container app')
@@ -169,7 +166,6 @@ module keyvault 'modules/keyvault.bicep' = {
     bandwidthClientSecret: bandwidthClientSecret
     vonageApiKey: vonageApiKey
     vonageApiSecret: vonageApiSecret
-    vonageSignatureSecret: vonageSignatureSecret
     webAccessToken: webAccessToken
   }
 }
@@ -211,7 +207,6 @@ module containerapp 'modules/containerapp.bicep' = {
     bandwidthClientSecretSecretUri: keyvault.outputs.bandwidthClientSecretUri
     vonageApiKeySecretUri: keyvault.outputs.vonageApiKeyUri
     vonageApiSecretSecretUri: keyvault.outputs.vonageApiSecretUri
-    vonageSignatureSecretSecretUri: keyvault.outputs.vonageSignatureSecretUri
     webAccessTokenSecretUri: keyvault.outputs.webAccessTokenUri
     bandwidthAccountId: bandwidthAccountId
     bandwidthApplicationId: bandwidthApplicationId

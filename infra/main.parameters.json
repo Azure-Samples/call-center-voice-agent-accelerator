@@ -56,9 +56,6 @@
     "vonageApiSecret": {
       "value": "${VONAGE_API_SECRET}"
     },
-    "vonageSignatureSecret": {
-      "value": "${VONAGE_SIGNATURE_SECRET}"
-    },
     "vonageApplicationId": {
       "value": "${VONAGE_APPLICATION_ID}"
     },

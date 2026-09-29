@@ -2,9 +2,9 @@
 
 Vonage Voice API flow (WebSocket media streaming):
 1. Caller dials the Vonage number → Vonage requests the Answer URL /vonage/answer.
-2. We validate the (optional) signed webhook and return an NCCO with a `connect`
-   action pointing at our WebSocket endpoint (/vonage/ws) with a one-time token
-   on the query string and content-type audio/l16;rate=24000.
+2. We return an NCCO with a `connect` action pointing at our WebSocket endpoint
+   (/vonage/ws) with a one-time token on the query string and content-type
+   audio/l16;rate=24000.
 3. Vonage opens the WebSocket, sends a text `websocket:connected` event, then
    streams raw PCM 24kHz audio as binary frames in both directions.
 4. Voice Live AI handles the conversation over the WebSocket.
@@ -41,7 +41,6 @@ def register_vonage_routes(app, call_manager: CallManager):
     # Load provider-specific config
     app.config["VONAGE_API_KEY"] = os.getenv("VONAGE_API_KEY", "")
     app.config["VONAGE_API_SECRET"] = os.getenv("VONAGE_API_SECRET", "")
-    app.config["VONAGE_SIGNATURE_SECRET"] = os.getenv("VONAGE_SIGNATURE_SECRET", "")
     app.config["VONAGE_APPLICATION_ID"] = os.getenv("VONAGE_APPLICATION_ID", "")
 
     vonage_handler = VonageEventHandler(app.config)
@@ -57,14 +56,6 @@ def register_vonage_routes(app, call_manager: CallManager):
         if not vonage_handler.api_key:
             return "Service Unavailable", 503
 
-        body = await request.get_data()
-        valid = vonage_handler.validate_webhook(
-            authorization=request.headers.get("authorization", ""),
-            body=body,
-        )
-        if valid is False:
-            return "Forbidden", 403
-
         host_url = request.host_url.replace("http://", "https://", 1).rstrip("/")
         ncco = vonage_handler.generate_answer_ncco(host_url)
         return Response(ncco, status=200, content_type="application/json")
@@ -73,14 +64,6 @@ def register_vonage_routes(app, call_manager: CallManager):
     async def vonage_events():
         """Receive Vonage call lifecycle events (answered, disconnected, ...)."""
         logger.info("Vonage /vonage/events webhook called")
-
-        body = await request.get_data()
-        valid = vonage_handler.validate_webhook(
-            authorization=request.headers.get("authorization", ""),
-            body=body,
-        )
-        if valid is False:
-            return "Forbidden", 403
 
         data = await request.get_json(silent=True) or {}
         logger.info("[VonageEventHandler] Event: %s", data.get("status", data))

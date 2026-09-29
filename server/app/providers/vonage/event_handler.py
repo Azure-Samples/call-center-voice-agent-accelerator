@@ -3,17 +3,13 @@
 Responsibilities:
 - Build the NCCO (Nexmo Call Control Object) that connects an inbound call to
   our WebSocket media endpoint with a one-time token.
-- Optionally validate Vonage signed webhooks (JWT, HS256) when a signature
-  secret is configured.
 - Mint and validate short-lived, self-contained tokens that gate the WebSocket
   media connection.
 
 References:
 - NCCO connect/websocket: https://developer.vonage.com/en/voice/voice-api/ncco-reference
-- Signed webhooks: https://developer.vonage.com/en/getting-started/concepts/signing-messages
 """
 
-import hashlib
 import json
 import logging
 import secrets
@@ -33,12 +29,11 @@ _WS_TOKEN_TTL_SECONDS = 120
 
 
 class VonageEventHandler:
-    """Generates NCCOs, validates signed webhooks, and issues WS tokens."""
+    """Generates NCCOs and issues WS tokens."""
 
     def __init__(self, config):
         self.api_key = config.get("VONAGE_API_KEY", "")
         self.api_secret = config.get("VONAGE_API_SECRET", "")
-        self.signature_secret = config.get("VONAGE_SIGNATURE_SECRET", "")
         self.application_id = config.get("VONAGE_APPLICATION_ID", "")
 
     # ------------------------------------------------------------------
@@ -48,10 +43,9 @@ class VonageEventHandler:
     def _token_key(self) -> str:
         """Return the HMAC key used to sign/verify WS tokens.
 
-        Prefer the signature secret (dedicated to signing); fall back to the API
-        secret, which is always present when Vonage is the active provider.
+        The API secret is always present when Vonage is the active provider.
         """
-        return self.signature_secret or self.api_secret
+        return self.api_secret
 
     # ------------------------------------------------------------------
     # NCCO generation
@@ -85,51 +79,6 @@ class VonageEventHandler:
         ]
         logger.info("[VonageEventHandler] Returning connect NCCO: endpoint=%s", ws_url)
         return json.dumps(ncco)
-
-    # ------------------------------------------------------------------
-    # Signed webhook validation
-    # ------------------------------------------------------------------
-
-    def validate_webhook(self, authorization: str, body: bytes):
-        """Validate a Vonage signed-webhook JWT.
-
-        Returns:
-            True  — signature secret configured and the request is authentic.
-            False — signature secret configured but the request is not authentic.
-            None  — signature secret not configured; validation is not enforced
-                    (the one-time WebSocket token still gates the media session).
-        """
-        if not self.signature_secret:
-            return None
-
-        token = ""
-        if authorization and authorization.lower().startswith("bearer "):
-            token = authorization[7:].strip()
-        if not token:
-            logger.warning("[VonageEventHandler] Missing signed-webhook JWT")
-            return False
-
-        try:
-            claims = jwt.decode(
-                token,
-                self.signature_secret,
-                algorithms=["HS256"],
-                options={"require": [], "verify_exp": True},
-            )
-        except jwt.InvalidTokenError as e:
-            logger.warning("[VonageEventHandler] Invalid signed-webhook JWT: %s", e)
-            return False
-
-        # When present, payload_hash binds the JWT to the exact request body,
-        # preventing a captured signature from being reused with altered content.
-        payload_hash = claims.get("payload_hash")
-        if payload_hash:
-            expected = hashlib.sha256(body or b"").hexdigest()
-            if not secrets.compare_digest(str(payload_hash), expected):
-                logger.warning("[VonageEventHandler] Signed-webhook payload_hash mismatch")
-                return False
-
-        return True
 
     # ------------------------------------------------------------------
     # WebSocket handshake token (stateless, signed, short-lived)

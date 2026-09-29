@@ -203,6 +203,7 @@ class VoiceLiveMediaHandler:
                     case ServerEventType.RESPONSE_DONE:
                         response_id = event.response.id if hasattr(event, "response") else None
                         logger.info("[VoiceLive] Response done: id=%s", response_id)
+                        await self.on_response_done()
 
                     case ServerEventType.ERROR:
                         logger.error("[VoiceLive] Error: %s", event.error)
@@ -276,6 +277,10 @@ class VoiceLiveMediaHandler:
         await self.send_message(
             json.dumps({"Kind": "Transcription", "Text": transcript})
         )
+
+    async def on_response_done(self):
+        """Called when Voice Live finishes a response. No-op by default."""
+        pass
 
     # ------------------------------------------------------------------
     # Audio output to client

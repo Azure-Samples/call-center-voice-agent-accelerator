@@ -513,9 +513,8 @@ Caller → PSTN → Vonage → WebSocket (PCM 24kHz) → Container App → Voice
 | `VONAGE_API_KEY` | Your Vonage API key | [Vonage Dashboard](https://dashboard.vonage.com) → Settings |
 | `VONAGE_API_SECRET` | Your Vonage API secret | [Vonage Dashboard](https://dashboard.vonage.com) → Settings |
 | `VONAGE_APPLICATION_ID` | *(Optional)* Existing Voice application ID. Leave unset to have one created automatically. | Dashboard → Applications → your Voice app |
-| `VONAGE_SIGNATURE_SECRET` | *(Optional)* Signature secret for signed-webhook validation | Dashboard → Settings → Signature secret |
 
-> The one-time WebSocket token is signed with `VONAGE_SIGNATURE_SECRET` when set, otherwise with `VONAGE_API_SECRET`. Signed-webhook validation is enforced only when `VONAGE_SIGNATURE_SECRET` is configured; the WebSocket token gates every media session regardless.
+> The one-time WebSocket token (signed with `VONAGE_API_SECRET`) gates every media session.
 
 #### 2. Voice Application & Webhooks (Automatic)
 

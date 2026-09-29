@@ -19,7 +19,6 @@ param bandwidthClientIdSecretUri string = ''
 param bandwidthClientSecretSecretUri string = ''
 param vonageApiKeySecretUri string = ''
 param vonageApiSecretSecretUri string = ''
-param vonageSignatureSecretSecretUri string = ''
 param webAccessTokenSecretUri string = ''
 param bandwidthAccountId string = ''
 param bandwidthApplicationId string = ''
@@ -157,13 +156,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             identity: identityId
           }
         ] : [],
-        !empty(vonageSignatureSecretSecretUri) ? [
-          {
-            name: 'vonage-signature-secret'
-            keyVaultUrl: vonageSignatureSecretSecretUri
-            identity: identityId
-          }
-        ] : [],
         !empty(webAccessTokenSecretUri) ? [
           {
             name: 'web-access-token'
@@ -259,11 +251,6 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'VONAGE_API_SECRET'
               secretRef: 'vonage-api-secret'
-            }
-          ] : [], !empty(vonageSignatureSecretSecretUri) ? [
-            {
-              name: 'VONAGE_SIGNATURE_SECRET'
-              secretRef: 'vonage-signature-secret'
             }
           ] : [], !empty(webAccessTokenSecretUri) ? [
             {

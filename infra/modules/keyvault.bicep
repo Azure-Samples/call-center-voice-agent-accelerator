@@ -22,8 +22,6 @@ param vonageApiKey string = ''
 @secure()
 param vonageApiSecret string = ''
 @secure()
-param vonageSignatureSecret string = ''
-@secure()
 param webAccessToken string = ''
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-02-01' = {
@@ -127,14 +125,6 @@ resource vonageApiSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = 
   }
 }
 
-resource vonageSignatureSecretSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(vonageSignatureSecret)) {
-  parent: keyVault
-  name: 'VONAGE-SIGNATURE-SECRET'
-  properties: {
-    value: vonageSignatureSecret
-  }
-}
-
 resource webAccessTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!empty(webAccessToken)) {
   parent: keyVault
   name: 'WEB-ACCESS-TOKEN'
@@ -153,7 +143,6 @@ output bandwidthClientIdUri string = !empty(bandwidthClientId) ? 'https://${keyV
 output bandwidthClientSecretUri string = !empty(bandwidthClientSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/BANDWIDTH-CLIENT-SECRET' : ''
 output vonageApiKeyUri string = !empty(vonageApiKey) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/VONAGE-API-KEY' : ''
 output vonageApiSecretUri string = !empty(vonageApiSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/VONAGE-API-SECRET' : ''
-output vonageSignatureSecretUri string = !empty(vonageSignatureSecret) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/VONAGE-SIGNATURE-SECRET' : ''
 output webAccessTokenUri string = !empty(webAccessToken) ? 'https://${keyVault.name}${keyVaultDnsSuffix}/secrets/WEB-ACCESS-TOKEN' : ''
 output keyVaultId string = keyVault.id
 output keyVaultName string = keyVault.name

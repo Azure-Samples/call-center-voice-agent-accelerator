@@ -395,12 +395,9 @@ if ([string]::IsNullOrWhiteSpace($twilioToken) -and [string]::IsNullOrWhiteSpace
                 Write-Host "WARNING: Could not fully validate Vonage credentials (HTTP $status); continuing." -ForegroundColor Yellow
             }
             $vAppId = Read-Host "Enter Vonage Application ID (optional — press Enter and one will be created for you)"
-            $vSigSecret = Read-Host "Enter Vonage Signature Secret (optional, press Enter to skip)" -AsSecureString
-            $vSigSecretPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($vSigSecret))
             azd env set VONAGE_API_KEY $vKey
             azd env set VONAGE_API_SECRET $vSecretPlain
             if (-not [string]::IsNullOrWhiteSpace($vAppId)) { azd env set VONAGE_APPLICATION_ID $vAppId }
-            if (-not [string]::IsNullOrWhiteSpace($vSigSecretPlain)) { azd env set VONAGE_SIGNATURE_SECRET $vSigSecretPlain }
             azd env set TELEPHONY_PROVIDER vonage
             Write-Host "Vonage configured." -ForegroundColor Green
             Write-Host ""

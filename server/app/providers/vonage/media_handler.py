@@ -13,9 +13,10 @@ through untouched — no resampling (and therefore no audioop dependency).
 Reference: https://developer.vonage.com/en/voice/voice-api/guides/websockets
 """
 
-import collections
+import asyncio
 import json
 import logging
+import time
 
 from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
 
@@ -25,10 +26,11 @@ logger = logging.getLogger(__name__)
 VOICE_LIVE_SAMPLE_RATE = 24000
 VOICE_LIVE_FRAME_BYTES = 960  # 480 samples * 2 bytes = 20ms at 24kHz
 
-# Cap on audio buffered before the WebSocket is authenticated. Vonage emits
-# websocket:connected almost immediately, so this only guards against a stalled
-# handshake (250 frames = ~5s of audio).
-_MAX_PRE_AUTH_FRAMES = 250
+# Match Vonage's real-time playback cadence.
+_FRAME_INTERVAL_SECONDS = 0.02
+
+# Limit queued audio to approximately five seconds.
+_MAX_QUEUED_FRAMES = 250
 
 
 class VonageMediaHandler(VoiceLiveMediaHandler):
@@ -46,17 +48,20 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
         self._token_validator = token_validator  # callable: validate_ws_token(token) -> bool
         self._out_frame_count = 0
         self._in_frame_count = 0
-        # Frames produced before authentication completes are held here and
-        # flushed once the handshake is validated so the greeting is not lost.
-        self._pre_auth_buffer = collections.deque(maxlen=_MAX_PRE_AUTH_FRAMES)
+        # Queue Voice Live bursts for real-time delivery to Vonage.
+        self._out_queue: asyncio.Queue = asyncio.Queue()
+        self._sender_task = None
+        # Carry incomplete frames across Voice Live deltas.
+        self._out_partial = bytearray()
 
     # ------------------------------------------------------------------
     # Voice Live hooks
     # ------------------------------------------------------------------
 
     async def on_speech_started(self):
-        """Barge-in: flush Vonage's playback buffer so the caller can interrupt."""
-        self._pre_auth_buffer.clear()
+        """Barge-in: drop queued audio and flush Vonage's playback buffer."""
+        self._drain_queue()
+        self._out_partial.clear()
         if self._authenticated and self.vonage_ws is not None:
             try:
                 await self.vonage_ws.send(json.dumps({"action": "clear"}))
@@ -67,37 +72,82 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
         """No-op — Vonage has no transcript channel."""
         pass
 
+    async def on_response_done(self):
+        """Response finished: pad and queue any carried-over remainder."""
+        if self._out_partial:
+            remaining = bytes(self._out_partial)
+            self._out_partial.clear()
+            self._enqueue_frame(remaining + b"\x00" * (VOICE_LIVE_FRAME_BYTES - len(remaining)))
+
     # ------------------------------------------------------------------
-    # Audio output to client — send raw binary frames directly
+    # Audio output to client
     # ------------------------------------------------------------------
 
     async def _send_audio_to_client(self, audio_bytes: bytes):
-        """Split Voice Live PCM (24kHz) into 20ms frames and send them to Vonage.
-
-        Vonage buffers audio internally, so frames are sent directly rather than
-        paced. Before authentication they are queued and flushed on connect.
-        """
+        """Queue complete 20ms PCM frames for paced delivery."""
         self._out_frame_count += 1
         if self._out_frame_count == 1:
             logger.info("[VonageMediaHandler] First outgoing audio chunk: %d bytes", len(audio_bytes))
 
         for frame in self._split_frames(audio_bytes):
-            if not self._authenticated:
-                self._pre_auth_buffer.append(frame)
-                continue
-            await self._send_frame(frame)
+            self._enqueue_frame(frame)
 
-    @staticmethod
-    def _split_frames(audio_bytes: bytes):
-        """Yield 960-byte frames, padding a trailing partial frame with silence."""
+    def _split_frames(self, audio_bytes: bytes):
+        """Yield whole frames and retain any remainder for the next delta."""
+        if self._out_partial:
+            audio_bytes = bytes(self._out_partial) + audio_bytes
+            self._out_partial.clear()
         offset = 0
         total = len(audio_bytes)
         while offset + VOICE_LIVE_FRAME_BYTES <= total:
             yield audio_bytes[offset:offset + VOICE_LIVE_FRAME_BYTES]
             offset += VOICE_LIVE_FRAME_BYTES
         if offset < total:
-            remaining = audio_bytes[offset:]
-            yield remaining + b"\x00" * (VOICE_LIVE_FRAME_BYTES - len(remaining))
+            self._out_partial.extend(audio_bytes[offset:])
+
+    def _enqueue_frame(self, frame: bytes):
+        """Queue one outgoing frame, dropping the oldest if the cap is exceeded."""
+        if self._out_queue.qsize() >= _MAX_QUEUED_FRAMES:
+            try:
+                self._out_queue.get_nowait()
+                self._out_queue.task_done()
+            except asyncio.QueueEmpty:
+                pass
+        self._out_queue.put_nowait(frame)
+
+    def _drain_queue(self):
+        """Discard all pending outgoing frames (used on barge-in)."""
+        dropped = 0
+        try:
+            while True:
+                self._out_queue.get_nowait()
+                self._out_queue.task_done()
+                dropped += 1
+        except asyncio.QueueEmpty:
+            pass
+        if dropped:
+            logger.debug("[VonageMediaHandler] Dropped %d queued frames on barge-in", dropped)
+
+    def _start_sender(self):
+        """Launch the single paced sender task once (idempotent)."""
+        if self._sender_task is None or self._sender_task.done():
+            self._sender_task = asyncio.create_task(self._paced_sender())
+
+    async def _paced_sender(self):
+        """Send queued frames at Vonage's real-time cadence."""
+        next_deadline = time.monotonic()
+        while True:
+            frame = await self._out_queue.get()
+            try:
+                await self._send_frame(frame)
+            finally:
+                self._out_queue.task_done()
+            next_deadline += _FRAME_INTERVAL_SECONDS
+            delay = next_deadline - time.monotonic()
+            if delay > 0:
+                await asyncio.sleep(delay)
+            else:
+                next_deadline = time.monotonic()
 
     async def _send_frame(self, frame: bytes):
         try:
@@ -105,13 +155,17 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
         except Exception as e:
             logger.debug("Vonage audio send failed: %s", e)
 
-    async def _flush_pre_auth_buffer(self):
-        """Send any audio buffered before authentication completed."""
-        if not self._pre_auth_buffer:
-            return
-        logger.info("[VonageMediaHandler] Flushing %d buffered frames", len(self._pre_auth_buffer))
-        while self._pre_auth_buffer:
-            await self._send_frame(self._pre_auth_buffer.popleft())
+    async def cleanup(self):
+        """Stop the paced sender, then run base Voice Live cleanup."""
+        self._out_partial.clear()
+        if self._sender_task is not None:
+            self._sender_task.cancel()
+            try:
+                await self._sender_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._sender_task = None
+        await super().cleanup()
 
     # ------------------------------------------------------------------
     # Vonage message handling
@@ -189,4 +243,4 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
 
         self._authenticated = True
         logger.info("[VonageMediaHandler] Audio format confirmed: PCM 24kHz 16-bit mono")
-        await self._flush_pre_auth_buffer()
+        self._start_sender()
