@@ -75,17 +75,19 @@ def register_vonage_routes(app, call_manager: CallManager):
         cid = new_correlation_id()
         logger.info("Incoming Vonage media WebSocket connection")
 
+        token = websocket.args.get("token", "")
+        if not vonage_handler.validate_ws_token(token):
+            logger.warning("Invalid or missing Vonage WebSocket token")
+            await websocket.close(4403, "Forbidden")
+            return
+
         call_id = cid
         if not await call_manager.acquire(call_id, "vonage"):
             await websocket.close(4429, "Too Many Connections")
             return
 
-        handler = VonageMediaHandler(app.config, token_validator=vonage_handler.validate_ws_token)
+        handler = VonageMediaHandler(app.config)
         handler.vonage_ws = websocket
-        # Vonage connects to the endpoint we returned in the NCCO, which carries
-        # the one-time token as a query parameter. Capture it for validation.
-        handler.url_token = websocket.args.get("token", "")
-        logger.info("Vonage WS query token present=%s", bool(handler.url_token))
         await handler.init_websocket(websocket)
         try:
             await run_call_loop(

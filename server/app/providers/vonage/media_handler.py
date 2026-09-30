@@ -29,10 +29,6 @@ VOICE_LIVE_FRAME_BYTES = 960  # 480 samples * 2 bytes = 20ms at 24kHz
 # Match Vonage's real-time playback cadence.
 _FRAME_INTERVAL_SECONDS = 0.02
 
-# Limit queued audio to approximately five seconds.
-_MAX_QUEUED_FRAMES = 250
-
-
 class VonageMediaHandler(VoiceLiveMediaHandler):
     """Bridges the Vonage WebSocket media endpoint to Azure Voice Live API.
 
@@ -40,12 +36,10 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
     so audio passes through directly with no format conversion.
     """
 
-    def __init__(self, config, token_validator=None):
+    def __init__(self, config):
         super().__init__(config)
         self.vonage_ws = None
-        self.url_token = ""  # one-time token from the WSS query string
         self._authenticated = False
-        self._token_validator = token_validator  # callable: validate_ws_token(token) -> bool
         self._out_frame_count = 0
         self._in_frame_count = 0
         # Queue Voice Live bursts for real-time delivery to Vonage.
@@ -77,7 +71,7 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
         if self._out_partial:
             remaining = bytes(self._out_partial)
             self._out_partial.clear()
-            self._enqueue_frame(remaining + b"\x00" * (VOICE_LIVE_FRAME_BYTES - len(remaining)))
+            await self._out_queue.put(remaining + b"\x00" * (VOICE_LIVE_FRAME_BYTES - len(remaining)))
 
     # ------------------------------------------------------------------
     # Audio output to client
@@ -90,7 +84,7 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
             logger.info("[VonageMediaHandler] First outgoing audio chunk: %d bytes", len(audio_bytes))
 
         for frame in self._split_frames(audio_bytes):
-            self._enqueue_frame(frame)
+            await self._out_queue.put(frame)
 
     def _split_frames(self, audio_bytes: bytes):
         """Yield whole frames and retain any remainder for the next delta."""
@@ -104,16 +98,6 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
             offset += VOICE_LIVE_FRAME_BYTES
         if offset < total:
             self._out_partial.extend(audio_bytes[offset:])
-
-    def _enqueue_frame(self, frame: bytes):
-        """Queue one outgoing frame, dropping the oldest if the cap is exceeded."""
-        if self._out_queue.qsize() >= _MAX_QUEUED_FRAMES:
-            try:
-                self._out_queue.get_nowait()
-                self._out_queue.task_done()
-            except asyncio.QueueEmpty:
-                pass
-        self._out_queue.put_nowait(frame)
 
     def _drain_queue(self):
         """Discard all pending outgoing frames (used on barge-in)."""
@@ -213,17 +197,9 @@ class VonageMediaHandler(VoiceLiveMediaHandler):
             logger.info("[VonageMediaHandler] Unknown event: %s", data)
 
     async def _handle_connected(self, data: dict):
-        """Parse websocket:connected, validate the token, confirm the audio format."""
+        """Parse websocket:connected and confirm the audio format."""
         content_type = data.get("content-type", "")
         logger.info("[VonageMediaHandler] Connected: content-type=%s", content_type)
-
-        # Validate the one-time token delivered on the WSS query string.
-        if self._token_validator:
-            if not self.url_token or not self._token_validator(self.url_token):
-                logger.warning("[VonageMediaHandler] Invalid or missing WebSocket token — closing connection")
-                await self.vonage_ws.close(1008)  # Policy Violation
-                return
-            logger.info("[VonageMediaHandler] WebSocket token validated")
 
         # Confirm the negotiated sample rate matches Voice Live (audio/l16;rate=24000).
         rate = VOICE_LIVE_SAMPLE_RATE

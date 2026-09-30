@@ -13,10 +13,11 @@
     is NOT set, a new Voice application is CREATED with POST and its ID is saved
     back to the azd environment as VONAGE_APPLICATION_ID.
 
-    After the webhooks are configured, the script also links the account's
-    voice-capable number(s) to the application via the Numbers API
-    (rest.nexmo.com/number/update). Numbers already linked to a different
-    application are left untouched.
+    After the webhooks are configured, the script can link one voice-capable
+    number to the application. Set VONAGE_PHONE_NUMBER to select a number. If
+    it is not set, the script uses the only available number or prompts for a
+    selection when multiple numbers are available. Automated runs do not
+    select from multiple numbers.
 
     Falls back to printing manual dashboard instructions if the credentials or
     API calls are unavailable. The deployment stays green (exit 0) either way —
@@ -85,10 +86,33 @@ function Warn-ConfigIncomplete {
     exit 0
 }
 
-# Best-effort: link voice-capable numbers on the account to this application so
-# inbound calls route to our webhooks. Never fails the deployment — on any error
-# it prints manual instructions and returns.
-function Link-VonageVoiceNumbers {
+function Write-NumberLinkInstructions {
+    param(
+        [Parameter(Mandatory)][array]$Numbers,
+        [Parameter(Mandatory)][string]$AppId
+    )
+
+    Write-Host "  Voice-capable numbers on this account:" -ForegroundColor White
+    foreach ($number in $Numbers) {
+        if ([string]::IsNullOrWhiteSpace($number.app_id)) {
+            $status = "unassigned"
+        }
+        elseif ($number.app_id -eq $AppId) {
+            $status = "linked to this application"
+        }
+        else {
+            $status = "linked to application $($number.app_id)"
+        }
+        Write-Host "    - $($number.msisdn) ($status)" -ForegroundColor Gray
+    }
+
+    Write-Host "  To select or reassign a number:" -ForegroundColor Cyan
+    Write-Host "    azd env set VONAGE_PHONE_NUMBER <number>" -ForegroundColor Gray
+    Write-Host "    azd hooks run postdeploy" -ForegroundColor Gray
+    Write-Host "  Or link it in the Vonage Dashboard: Applications > select the application > Link numbers." -ForegroundColor Gray
+}
+
+function Link-VonageVoiceNumber {
     param(
         [Parameter(Mandatory)][string]$AppId,
         [Parameter(Mandatory)][hashtable]$AuthHeaders
@@ -119,36 +143,72 @@ function Link-VonageVoiceNumbers {
         return
     }
 
-    $linkedCount = 0
-    foreach ($num in $voiceNumbers) {
-        $msisdn     = $num.msisdn
-        $country    = $num.country
-        $currentApp = $num.app_id
+    $alreadyLinked = @($voiceNumbers | Where-Object { $_.app_id -eq $AppId })
+    if ($alreadyLinked.Count -gt 0) {
+        Write-Host "  - $($alreadyLinked[0].msisdn) is already linked to this application." -ForegroundColor Gray
+        return
+    }
 
-        if ($currentApp -eq $AppId) {
-            Write-Host "  - $msisdn is already linked to this application." -ForegroundColor Gray
-            $linkedCount++
-            continue
-        }
-        if (-not [string]::IsNullOrWhiteSpace($currentApp)) {
-            Write-Host "  - $msisdn is linked to a different application ($currentApp); leaving it unchanged." -ForegroundColor Yellow
-            continue
-        }
+    $configuredNumber = azd env get-value VONAGE_PHONE_NUMBER 2>$null
+    if ($LASTEXITCODE -ne 0) { $configuredNumber = "" }
 
-        try {
-            $updateBody = @{ country = $country; msisdn = $msisdn; app_id = $AppId }
-            Invoke-RestMethod -Uri "https://rest.nexmo.com/number/update" -Headers $AuthHeaders `
-                -Method Post -Body $updateBody -ContentType "application/x-www-form-urlencoded" -ErrorAction Stop | Out-Null
-            Write-Host "  - Linked $msisdn to the application." -ForegroundColor Green
-            $linkedCount++
+    $selectedNumber = $null
+    if (-not [string]::IsNullOrWhiteSpace($configuredNumber)) {
+        $normalizedNumber = $configuredNumber.Trim().TrimStart('+')
+        $selectedNumber = $voiceNumbers | Where-Object { "$($_.msisdn)".TrimStart('+') -eq $normalizedNumber } | Select-Object -First 1
+        if (-not $selectedNumber) {
+            Write-Host "  NOTE: VONAGE_PHONE_NUMBER '$configuredNumber' was not found among the account's voice-capable numbers." -ForegroundColor Yellow
+            Write-NumberLinkInstructions -Numbers $voiceNumbers -AppId $AppId
+            return
         }
-        catch {
-            Write-Host "  - Could not link $msisdn automatically ($($_.Exception.Message)); link it manually in the dashboard." -ForegroundColor Yellow
+        if (-not [string]::IsNullOrWhiteSpace($selectedNumber.app_id)) {
+            Write-Host "  - Reassigning $configuredNumber from application $($selectedNumber.app_id)." -ForegroundColor Yellow
+        }
+    }
+    else {
+        $availableNumbers = @($voiceNumbers | Where-Object { [string]::IsNullOrWhiteSpace($_.app_id) })
+        if ($availableNumbers.Count -eq 0) {
+            Write-Host "  NOTE: No unassigned voice-capable numbers are available." -ForegroundColor Yellow
+            Write-NumberLinkInstructions -Numbers $voiceNumbers -AppId $AppId
+            return
+        }
+        if ($availableNumbers.Count -eq 1) {
+            $selectedNumber = $availableNumbers[0]
+        }
+        elseif ($env:CI) {
+            Write-Host "  NOTE: Multiple unassigned numbers were found; no number was changed during this automated run." -ForegroundColor Yellow
+            Write-NumberLinkInstructions -Numbers $voiceNumbers -AppId $AppId
+            return
+        }
+        else {
+            Write-Host "  Found $($availableNumbers.Count) unassigned voice-capable numbers:" -ForegroundColor White
+            for ($i = 0; $i -lt $availableNumbers.Count; $i++) {
+                Write-Host "    [$($i + 1)] $($availableNumbers[$i].msisdn)" -ForegroundColor Gray
+            }
+            $pick = Read-Host "Select number to link [1]"
+            if ([string]::IsNullOrWhiteSpace($pick)) { $pick = "1" }
+            $index = 0
+            if (-not [int]::TryParse($pick, [ref]$index) -or $index -lt 1 -or $index -gt $availableNumbers.Count) {
+                Write-Host "  No number linked." -ForegroundColor Yellow
+                return
+            }
+            $selectedNumber = $availableNumbers[$index - 1]
         }
     }
 
-    if ($linkedCount -eq 0) {
-        Write-Host "  NOTE: No numbers were linked automatically. Link a voice-capable number in the dashboard." -ForegroundColor Yellow
+    try {
+        $updateBody = @{
+            country = $selectedNumber.country
+            msisdn  = $selectedNumber.msisdn
+            app_id  = $AppId
+        }
+        Invoke-RestMethod -Uri "https://rest.nexmo.com/number/update" -Headers $AuthHeaders `
+            -Method Post -Body $updateBody -ContentType "application/x-www-form-urlencoded" -ErrorAction Stop | Out-Null
+        Write-Host "  - Linked $($selectedNumber.msisdn) to the application." -ForegroundColor Green
+    }
+    catch {
+        Write-Host "  - Could not link $($selectedNumber.msisdn) automatically ($($_.Exception.Message)); link it manually in the dashboard." -ForegroundColor Yellow
+        Write-NumberLinkInstructions -Numbers $voiceNumbers -AppId $AppId
     }
 }
 
@@ -220,7 +280,7 @@ if ([string]::IsNullOrWhiteSpace($vonageAppId)) {
     Write-Host "  Event URL   : $eventUrl" -ForegroundColor Gray
 
     # Attempt to link the account's voice-capable number(s) automatically.
-    Link-VonageVoiceNumbers -AppId $newAppId -AuthHeaders $headers
+    Link-VonageVoiceNumber -AppId $newAppId -AuthHeaders $headers
 
     Write-Host ""
     Write-Host "Then call your Vonage number to talk to your voice agent!" -ForegroundColor White
@@ -284,7 +344,7 @@ try {
     Write-Host "  Event URL   : $eventUrl" -ForegroundColor Gray
 
     # Attempt to link the account's voice-capable number(s) automatically.
-    Link-VonageVoiceNumbers -AppId $vonageAppId -AuthHeaders $headers
+    Link-VonageVoiceNumber -AppId $vonageAppId -AuthHeaders $headers
 
     Write-Host ""
     Write-Host "Then call your Vonage number to talk to your voice agent!" -ForegroundColor White
