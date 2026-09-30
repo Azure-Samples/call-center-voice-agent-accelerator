@@ -17,8 +17,12 @@ param sinchApplicationKeySecretUri string = ''
 param sinchApplicationSecretSecretUri string = ''
 param bandwidthClientIdSecretUri string = ''
 param bandwidthClientSecretSecretUri string = ''
+param vonageApiKeySecretUri string = ''
+param vonageApiSecretSecretUri string = ''
+param webAccessTokenSecretUri string = ''
 param bandwidthAccountId string = ''
 param bandwidthApplicationId string = ''
+param vonageApplicationId string = ''
 param logAnalyticsWorkspaceName string
 param appInsightsConnectionString string = ''
 @description('The name of the container image')
@@ -137,6 +141,27 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             keyVaultUrl: bandwidthClientSecretSecretUri
             identity: identityId
           }
+        ] : [],
+        !empty(vonageApiKeySecretUri) ? [
+          {
+            name: 'vonage-api-key'
+            keyVaultUrl: vonageApiKeySecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(vonageApiSecretSecretUri) ? [
+          {
+            name: 'vonage-api-secret'
+            keyVaultUrl: vonageApiSecretSecretUri
+            identity: identityId
+          }
+        ] : [],
+        !empty(webAccessTokenSecretUri) ? [
+          {
+            name: 'web-access-token'
+            keyVaultUrl: webAccessTokenSecretUri
+            identity: identityId
+          }
         ] : [])
     }
     template: {
@@ -212,6 +237,25 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'BANDWIDTH_CLIENT_SECRET'
               secretRef: 'bandwidth-client-secret'
+            }
+          ] : [], !empty(vonageApiKeySecretUri) ? [
+            {
+              name: 'VONAGE_API_KEY'
+              secretRef: 'vonage-api-key'
+            }
+            {
+              name: 'VONAGE_APPLICATION_ID'
+              value: vonageApplicationId
+            }
+          ] : [], !empty(vonageApiSecretSecretUri) ? [
+            {
+              name: 'VONAGE_API_SECRET'
+              secretRef: 'vonage-api-secret'
+            }
+          ] : [], !empty(webAccessTokenSecretUri) ? [
+            {
+              name: 'WEB_ACCESS_TOKEN'
+              secretRef: 'web-access-token'
             }
           ] : [])
           resources: {

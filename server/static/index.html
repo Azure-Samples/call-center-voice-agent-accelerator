@@ -83,6 +83,12 @@
   <div class="subtitle">Talk to an AI agent in real time. Click below to start.</div>
 
   <div class="controls">
+    <input id="accessToken" type="password" placeholder="Access token (if required)"
+      title="Web access token — must match WEB_ACCESS_TOKEN configured on the server"
+      style="padding: 0.85rem 1rem; font-size: 1.05rem; border: 1px solid #ccc; border-radius: 0.5rem; min-width: 16rem;" />
+  </div>
+
+  <div class="controls" style="margin-top: 1rem;">
     <button id="startBtn" onclick="startStreaming()" title="Start talking to the voice agent">
       Start Talking to Agent
     </button>
@@ -176,7 +182,9 @@
     function startStreaming() {
       let wsProtocol = window.location.protocol === "https:" ? "wss" : "ws";
       let wsHost = window.location.host; 
-      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws`);
+      const token = document.getElementById("accessToken").value.trim();
+      const query = token ? `?token=${encodeURIComponent(token)}` : "";
+      socket = new WebSocket(`${wsProtocol}://${wsHost}/web/ws${query}`);
       socket.binaryType = "arraybuffer";
 
       socket.onopen = async () => {

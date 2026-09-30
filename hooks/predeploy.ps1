@@ -17,6 +17,8 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     if ($LASTEXITCODE -ne 0) { $sinchKey = "" }
     $bandwidthToken = azd env get-value BANDWIDTH_CLIENT_ID 2>$null
     if ($LASTEXITCODE -ne 0) { $bandwidthToken = "" }
+    $vonageKey = azd env get-value VONAGE_API_KEY 2>$null
+    if ($LASTEXITCODE -ne 0) { $vonageKey = "" }
 
     if (-not [string]::IsNullOrWhiteSpace($twilioToken)) {
         azd env set TELEPHONY_PROVIDER twilio
@@ -37,6 +39,10 @@ if ([string]::IsNullOrWhiteSpace($telephony)) {
     elseif (-not [string]::IsNullOrWhiteSpace($bandwidthToken)) {
         azd env set TELEPHONY_PROVIDER bandwidth
         Write-Host "TELEPHONY_PROVIDER set to: bandwidth" -ForegroundColor Green
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace($vonageKey)) {
+        azd env set TELEPHONY_PROVIDER vonage
+        Write-Host "TELEPHONY_PROVIDER set to: vonage" -ForegroundColor Green
     }
     else {
         azd env set TELEPHONY_PROVIDER acs

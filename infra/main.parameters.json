@@ -14,6 +14,9 @@
     "modelName": {
       "value": "${AZURE_VOICE_LIVE_MODEL=gpt-4o-mini}"
     },
+    "webAccessToken": {
+      "value": "${WEB_ACCESS_TOKEN=}"
+    },
     "telephonyProvider": {
       "value": "${TELEPHONY_PROVIDER=acs}"
     },
@@ -46,6 +49,15 @@
     },
     "bandwidthApplicationId": {
       "value": "${BANDWIDTH_APPLICATION_ID}"
+    },
+    "vonageApiKey": {
+      "value": "${VONAGE_API_KEY}"
+    },
+    "vonageApiSecret": {
+      "value": "${VONAGE_API_SECRET}"
+    },
+    "vonageApplicationId": {
+      "value": "${VONAGE_APPLICATION_ID}"
     },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"

@@ -17,6 +17,7 @@ import logging
 import uuid
 
 from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
+from azure.ai.voicelive.models import InputAudioFormat, OutputAudioFormat
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,27 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         # Paced output buffer for barge-in support
         self._out_buffer = collections.deque()
         self._pcmu_remainder = b''  # Carry partial frames to next chunk
+
+        # Native 8kHz g711 mode: have Voice Live send/receive mu-law 8kHz
+        # directly so we skip the 8k<->24k resampling round-trip (lower
+        # latency, no quality loss). Configurable via GENESYS_VOICELIVE_FORMAT:
+        #   "pcm16" (default)     = legacy 8k<->24k resample, ambient supported
+        #   "g711_ulaw" (opt-in)  = native 8kHz, ambient mixing not available
+        fmt = str(config.get("GENESYS_VOICELIVE_FORMAT", "pcm16")).strip().lower()
+        self._native_8k = fmt in ("g711_ulaw", "g711", "ulaw", "8k")
+        if self._native_8k:
+            self.input_audio_format = InputAudioFormat.G711_ULAW
+            self.output_audio_format = OutputAudioFormat.G711_ULAW
+            if self._ambient_mixer is not None:
+                logger.warning(
+                    "[GenesysHandler] Ambient mixing is not supported in native "
+                    "8kHz g711 mode \u2014 disabling it. Set GENESYS_VOICELIVE_FORMAT=pcm16 "
+                    "to keep ambient (with 8k\u219224k resampling)."
+                )
+                self._ambient_mixer = None
+            logger.info("[GenesysHandler] Native 8kHz g711 mode ENABLED (no resampling)")
+        else:
+            logger.info("[GenesysHandler] Legacy PCM16 mode (8k\u219224k resampling)")
 
     # ------------------------------------------------------------------
     # Authentication (WebSocket upgrade headers)
@@ -277,16 +299,21 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         except Exception as e:
             logger.debug("Genesys audio send failed: %s", e)
 
-        # Convert PCMU 8kHz → PCM 16-bit 24kHz for Voice Live
+        # Forward inbound audio to Voice Live.
         if not self._voicelive_connected:
             return
 
         try:
-            pcm_8k = audioop.ulaw2lin(frame, 2)
-            pcm_24k, self._ratecv_state_in = audioop.ratecv(
-                pcm_8k, 2, 1, GENESYS_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, self._ratecv_state_in
-            )
-            await self.handle_audio(pcm_24k)
+            if self._native_8k:
+                # Native g711: forward mu-law 8kHz straight through (no resample).
+                await self.handle_audio(frame)
+            else:
+                # Convert PCMU 8kHz \u2192 PCM 16-bit 24kHz for Voice Live
+                pcm_8k = audioop.ulaw2lin(frame, 2)
+                pcm_24k, self._ratecv_state_in = audioop.ratecv(
+                    pcm_8k, 2, 1, GENESYS_SAMPLE_RATE, VOICELIVE_SAMPLE_RATE, self._ratecv_state_in
+                )
+                await self.handle_audio(pcm_24k)
         except Exception:
             logger.exception("[GenesysHandler] Error converting audio frame %d", self._in_frame_count)
 
@@ -309,16 +336,20 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
     # ------------------------------------------------------------------
 
     async def _send_audio_to_client(self, audio_bytes: bytes):
-        """Convert PCM 24kHz from Voice Live → PCMU 8kHz, buffer for paced delivery."""
+        """Buffer Voice Live TTS as paced PCMU 8kHz frames for delivery.
+        """
         self._out_frame_count += 1
         if self._out_frame_count == 1:
             logger.info("[GenesysHandler] First outgoing audio: %d bytes", len(audio_bytes))
 
         try:
-            pcm_8k, self._ratecv_state_out = audioop.ratecv(
-                audio_bytes, 2, 1, VOICELIVE_SAMPLE_RATE, GENESYS_SAMPLE_RATE, self._ratecv_state_out
-            )
-            pcmu = audioop.lin2ulaw(pcm_8k, 2)
+            if self._native_8k:
+                pcmu = audio_bytes
+            else:
+                pcm_8k, self._ratecv_state_out = audioop.ratecv(
+                    audio_bytes, 2, 1, VOICELIVE_SAMPLE_RATE, GENESYS_SAMPLE_RATE, self._ratecv_state_out
+                )
+                pcmu = audioop.lin2ulaw(pcm_8k, 2)
             # Prepend any remainder from previous call for continuity
             pcmu = self._pcmu_remainder + pcmu
             # Buffer complete 160-byte (20ms) frames for paced delivery

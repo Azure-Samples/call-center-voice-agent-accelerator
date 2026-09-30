@@ -53,11 +53,20 @@ class VoiceLiveMediaHandler:
         self.model = config["VOICE_LIVE_MODEL"]
         self.api_key = config["AZURE_VOICE_LIVE_API_KEY"]
         self.client_id = config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"]
+
+        # Voice Live audio format. Defaults to PCM16 (24kHz)
+        self.input_audio_format = InputAudioFormat.PCM16
+        self.output_audio_format = OutputAudioFormat.PCM16
+
         self.conn = None
         self._conn_ctx = None  # async context manager from SDK connect()
         self._credential = None  # kept alive for token refresh
         self._receiver_task = None
         self._voicelive_connected = False  # True while Voice Live WS is healthy
+
+        self._turn_speech_stopped_ts: Optional[float] = None
+        self._awaiting_first_audio = False
+        self._turn_index = 0
 
         # Client WebSocket
         self.client_ws = None
@@ -85,8 +94,8 @@ class VoiceLiveMediaHandler:
             modalities=[Modality.TEXT, Modality.AUDIO],
             instructions="You are a helpful AI assistant responding in natural, engaging language.",
             turn_detection=AzureSemanticVad(),
-            input_audio_format=InputAudioFormat.PCM16,
-            output_audio_format=OutputAudioFormat.PCM16,
+            input_audio_format=self.input_audio_format,
+            output_audio_format=self.output_audio_format,
             input_audio_noise_reduction=AudioNoiseReduction(type="azure_deep_noise_suppression"),
             input_audio_echo_cancellation=AudioEchoCancellation(),
             voice=AzureStandardVoice(name="en-US-Aria:DragonHDLatestNeural", temperature=0.8),
@@ -118,6 +127,7 @@ class VoiceLiveMediaHandler:
 
         t2 = time.perf_counter()
         logger.info("[VoiceLive] SDK connected in %.2fs (total %.2fs)", t2 - t1, t2 - t0)
+        logger.info("[VoiceLive] Session model=%s", self.model.strip())
         self._voicelive_connected = True
 
         await self.conn.session.update(session=self._session_config())
@@ -158,6 +168,9 @@ class VoiceLiveMediaHandler:
 
                     case ServerEventType.INPUT_AUDIO_BUFFER_SPEECH_STOPPED:
                         logger.info("[VoiceLive] Speech stopped")
+                        self._turn_speech_stopped_ts = time.perf_counter()
+                        self._awaiting_first_audio = True
+                        self._turn_index += 1
 
                     case ServerEventType.CONVERSATION_ITEM_INPUT_AUDIO_TRANSCRIPTION_COMPLETED:
                         transcript = event.transcript
@@ -171,6 +184,15 @@ class VoiceLiveMediaHandler:
                     case ServerEventType.RESPONSE_AUDIO_DELTA:
                         delta = event.delta
                         if delta:
+                            if self._awaiting_first_audio and self._turn_speech_stopped_ts is not None:
+                                ttfa_ms = (time.perf_counter() - self._turn_speech_stopped_ts) * 1000.0
+                                self._awaiting_first_audio = False
+                                logger.info(
+                                    "[Metric] ttfa model=%s turn=%d ttfa_ms=%.0f",
+                                    self.model.strip(),
+                                    self._turn_index,
+                                    ttfa_ms,
+                                )
                             await self.on_audio_delta(delta)
 
                     case ServerEventType.RESPONSE_AUDIO_TRANSCRIPT_DONE:
@@ -181,6 +203,7 @@ class VoiceLiveMediaHandler:
                     case ServerEventType.RESPONSE_DONE:
                         response_id = event.response.id if hasattr(event, "response") else None
                         logger.info("[VoiceLive] Response done: id=%s", response_id)
+                        await self.on_response_done()
 
                     case ServerEventType.ERROR:
                         logger.error("[VoiceLive] Error: %s", event.error)
@@ -254,6 +277,10 @@ class VoiceLiveMediaHandler:
         await self.send_message(
             json.dumps({"Kind": "Transcription", "Text": transcript})
         )
+
+    async def on_response_done(self):
+        """Called when Voice Live finishes a response. No-op by default."""
+        pass
 
     # ------------------------------------------------------------------
     # Audio output to client
