@@ -39,6 +39,7 @@ The solution includes:
   - **Vonage** — PSTN via Vonage Voice API with native 24kHz PCM WebSocket audio streaming (NCCO)
 
   > **Telephony selection:** Only one telephony provider can be active at a time. The service automatically selects the provider based on the configured credentials. If no credentials are provided, Azure Communication Services is used by default.
+- **Transcription mode** (optional, `CALL_MODE=transcription`): live agent-assist transcript of human customer ↔ agent calls with speaker labels — see [Transcription Mode](#-transcription-mode-agent-assist)
 - **Ambient Scenes** (optional): Add realistic background audio (office, call center) or use custom audio files to simulate real-world environments
 - Flexible configuration to customize prompts, ASR, TTS, and behavior
 - Easy extension to other client types
@@ -537,6 +538,30 @@ Dial your Vonage phone number. The call connects to the real-time voice agent po
 1. Vonage requests `/vonage/answer` — the server validates the (optional) signed webhook and returns an NCCO with a `connect`→`websocket` action carrying a one-time token and `content-type: audio/l16;rate=24000`
 2. Vonage opens a WebSocket to `/vonage/ws` — the server validates the token on the `websocket:connected` event, then bridges audio to Azure Voice Live
 3. Caller audio (PCM 24kHz) passes through directly to Voice Live; the AI response streams back the same way. Barge-in flushes Vonage's playback buffer with a `clear` command
+
+### 📝 Transcription Mode (Agent Assist)
+
+Set `CALL_MODE=transcription` to **listen to** calls between a human customer and a human agent instead of answering them. Each speaker is transcribed in real time with Azure AI Speech and labeled **customer** or **agent**. The transcript streams to a browser view at `/transcript` and over a WebSocket event stream for downstream models.
+
+```
+Customer ⇄ Genesys Cloud ⇄ Agent
+              │ AudioHook Monitor (stereo: external = customer, internal = agent)
+              ▼
+     /audiohook/ws → per-speaker Azure AI Speech STT → /transcript (agent view) + /transcript/ws (events)
+```
+
+```bash
+azd env set CALL_MODE transcription
+azd env set TELEPHONY_PROVIDER genesys   # optional: the browser harness works without it
+azd up
+```
+
+**Testing without Genesys:**
+- Open `/transcribe-test`, choose a recorded customer audio file, and speak as the agent.
+- Or open `/genesys` and select **Stereo** to exercise the real AudioHook protocol.
+- Set `TRANSCRIPTION_BACKEND=fake` for an offline UI check without Azure.
+
+See [docs/genesys-transcription.md](./docs/genesys-transcription.md) for configuration, Genesys AudioHook Monitor setup and the transcript event schema.
 
 ## Local Development
 

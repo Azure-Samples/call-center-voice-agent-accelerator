@@ -114,3 +114,21 @@ The server starts with:
 Open the simulator page, enter the same API key, and click **Connect & Start Call** to test without a Genesys Cloud account.
 
 For production setup and full details, see the [Genesys AudioHook section](../README.md#-genesys-cloud-audiohook-audio-connector) in the top-level README.
+
+## 4. Test Transcription Mode (Agent Assist)
+
+Add to `.env`:
+
+```
+CALL_MODE=transcription
+TRANSCRIPTION_BACKEND=fake          # or azure_speech (uses AZURE_VOICE_LIVE_ENDPOINT / key or az login)
+GENESYS_API_KEY=my-genesys-test-key # optional, enables /audiohook/ws and the /genesys simulator
+```
+
+Run `uv run server.py`, then open:
+
+- http://localhost:8000/transcribe-test: an audio file plays as the customer and the mic is the agent.
+- http://localhost:8000/genesys: select **Stereo** to test the AudioHook path.
+- http://localhost:8000/transcript: the live agent transcript view.
+
+Run the unit tests with `uv run --group dev pytest`. See [../docs/genesys-transcription.md](../docs/genesys-transcription.md) for details.
