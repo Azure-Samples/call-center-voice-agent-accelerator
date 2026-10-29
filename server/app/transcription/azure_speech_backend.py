@@ -96,16 +96,21 @@ class AzureSpeechBackend:
         self._speech_config = build_speech_config(self.config)
         for speaker in speakers:
             self._restarts[speaker] = 0
-            self._channels[speaker] = await self._open_channel(speaker)
+            channel = self._create_channel(speaker)
+            # Register before starting so stop() can clean up even if start is cancelled.
+            self._channels[speaker] = channel
+            await self._start_channel(speaker, channel)
 
-    async def _open_channel(self, speaker: Speaker) -> _Channel:
+    def _create_channel(self, speaker: Speaker) -> _Channel:
         stream, recognizer = self._factory(self._speech_config, self.sample_rate)
         recognizer.recognizing.connect(lambda e, s=speaker: self._from_sdk(self._on_result, s, e, False))
         recognizer.recognized.connect(lambda e, s=speaker: self._from_sdk(self._on_result, s, e, True))
         recognizer.canceled.connect(lambda e, s=speaker, r=recognizer: self._from_sdk(self._on_canceled, s, r, e))
-        await asyncio.to_thread(recognizer.start_continuous_recognition)
-        logger.info("[AzureSpeech] %s recognizer started (%d Hz) for %s", speaker, self.sample_rate, self._cid)
         return _Channel(stream, recognizer)
+
+    async def _start_channel(self, speaker: Speaker, channel: _Channel) -> None:
+        await asyncio.to_thread(channel.recognizer.start_continuous_recognition)
+        logger.info("[AzureSpeech] %s recognizer started (%d Hz) for %s", speaker, self.sample_rate, self._cid)
 
     def _from_sdk(self, fn, *args) -> None:
         """SDK callbacks fire on worker threads; hop onto the event loop."""
@@ -165,9 +170,15 @@ class AzureSpeechBackend:
             if self._stopped:
                 return
             try:
-                self._channels[speaker] = await self._open_channel(speaker)
+                channel = self._create_channel(speaker)
+                self._channels[speaker] = channel
+                await self._start_channel(speaker, channel)
             except Exception:
                 logger.exception("[AzureSpeech] %s restart attempt %d failed", speaker, attempt)
+                failed = self._channels.pop(speaker, None)
+                self._channels[speaker] = None
+                if failed is not None:
+                    await self._close_channel(failed)
                 continue
             self._status(StreamState.CONNECTED)
             return

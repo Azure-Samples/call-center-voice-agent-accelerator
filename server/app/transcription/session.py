@@ -44,7 +44,8 @@ class TranscriptionSession:
             return
         self._closed = True
         cid = self.conversation_id
-        if self._ready:
+        if cid is not None:
+            # Stop even if start() never completed (e.g. cancelled) to release partial resources.
             try:
                 await self.backend.stop()
             except Exception:
