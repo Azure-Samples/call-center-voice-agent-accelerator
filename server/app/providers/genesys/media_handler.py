@@ -11,12 +11,10 @@ Reference: https://developer.genesys.cloud/devapps/audiohook
 
 import audioop
 import collections
-import hmac
-import json
 import logging
-import uuid
 
 from app.handler.voicelive_media_handler import VoiceLiveMediaHandler
+from app.providers.genesys.audiohook import AudioHookSession, validate_api_key
 from azure.ai.voicelive.models import InputAudioFormat, OutputAudioFormat
 
 logger = logging.getLogger(__name__)
@@ -40,13 +38,12 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         super().__init__(config)
         self.api_key = config.get("GENESYS_API_KEY", "")
         self.genesys_ws = None
-        self._session_id = None
-        self._conversation_id = None
-        self._client_seq = 0  # last seq received from client
-        self._server_seq = 0  # our outgoing seq counter
-        self._authenticated = False
-        self._session_open = False
-        self._paused = False
+        # Voice agent consumes the caller (external) channel only.
+        self._audiohook = AudioHookSession(
+            send=lambda m: self.genesys_ws.send(m),
+            preferred_channels=[["external"]],
+            log_prefix="[GenesysHandler]",
+        )
         self._ratecv_state_in = None
         self._ratecv_state_out = None
         self._in_frame_count = 0
@@ -82,9 +79,7 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
 
     def validate_api_key(self, provided_key: str) -> bool:
         """Validate the X-API-KEY header from the WebSocket upgrade request."""
-        if not self.api_key or not provided_key:
-            return False
-        return hmac.compare_digest(provided_key, self.api_key)
+        return validate_api_key(self.api_key, provided_key)
 
     # ------------------------------------------------------------------
     # AudioHook protocol message handling
@@ -99,174 +94,7 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
         if isinstance(message, bytes):
             await self._handle_audio_frame(message)
             return
-
-        # Text messages are JSON protocol messages
-        try:
-            data = json.loads(message)
-        except json.JSONDecodeError:
-            logger.warning("[GenesysHandler] Non-JSON text message: %s", message[:200])
-            return
-
-        msg_type = data.get("type")
-        self._client_seq = data.get("seq", self._client_seq)
-        self._session_id = data.get("id", self._session_id)
-
-        match msg_type:
-            case "open":
-                await self._handle_open(data)
-            case "ping":
-                await self._handle_ping(data)
-            case "close":
-                await self._handle_close(data)
-            case "update":
-                await self._handle_update(data)
-            case "pause":
-                await self._handle_pause(data)
-            case "resume":
-                await self._handle_resume(data)
-            case _:
-                logger.info("[GenesysHandler] Unknown message type: %s", msg_type)
-
-    async def _handle_open(self, data: dict):
-        """Handle the 'open' message — negotiate media and respond with 'opened'."""
-        params = data.get("parameters", {})
-        media_offers = params.get("media", [])
-        participant = params.get("participant", {})
-        self._conversation_id = params.get("conversationId", "")
-
-        logger.info(
-            "[GenesysHandler] Open: session=%s conversation=%s participant=%s",
-            self._session_id, self._conversation_id,
-            participant.get("ani", "unknown"),
-        )
-
-        # Select media format: prefer PCMU external-only channel
-        selected_media = None
-        for offer in media_offers:
-            if offer.get("format") == "PCMU" and offer.get("channels") == ["external"]:
-                selected_media = offer
-                break
-        # Fall back to first PCMU offer
-        if not selected_media:
-            for offer in media_offers:
-                if offer.get("format") == "PCMU":
-                    selected_media = offer
-                    break
-
-        if not selected_media:
-            logger.error("[GenesysHandler] No compatible media format offered")
-            await self._send_disconnect("error", "No compatible media format")
-            return
-
-        # Respond with 'opened'
-        self._server_seq += 1
-        opened_msg = {
-            "version": "2",
-            "type": "opened",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-            "parameters": {
-                "startPaused": False,
-                "media": [selected_media],
-            },
-        }
-        await self.genesys_ws.send(json.dumps(opened_msg))
-        self._session_open = True
-        self._authenticated = True
-        logger.info(
-            "[GenesysHandler] Session opened: format=%s rate=%s channels=%s",
-            selected_media.get("format"),
-            selected_media.get("rate"),
-            selected_media.get("channels"),
-        )
-
-    async def _handle_ping(self, data: dict):
-        """Respond to ping with pong immediately."""
-        self._server_seq += 1
-        pong_msg = {
-            "version": "2",
-            "type": "pong",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-        }
-        await self.genesys_ws.send(json.dumps(pong_msg))
-
-    async def _handle_close(self, data: dict):
-        """Handle session close — respond with 'closed'."""
-        logger.info("[GenesysHandler] Close received for session %s", self._session_id)
-        self._session_open = False
-        self._server_seq += 1
-        closed_msg = {
-            "version": "2",
-            "type": "closed",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-            "parameters": {},
-        }
-        await self.genesys_ws.send(json.dumps(closed_msg))
-
-    async def _handle_update(self, data: dict):
-        """Handle update message — acknowledge with 'updated'."""
-        logger.info("[GenesysHandler] Update received: %s", data.get("parameters", {}))
-        self._server_seq += 1
-        updated_msg = {
-            "version": "2",
-            "type": "updated",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-            "parameters": {},
-        }
-        await self.genesys_ws.send(json.dumps(updated_msg))
-
-    async def _handle_pause(self, data: dict):
-        """Handle pause — stop processing audio."""
-        logger.info("[GenesysHandler] Paused")
-        self._paused = True
-        # Respond with 'paused'
-        self._server_seq += 1
-        paused_msg = {
-            "version": "2",
-            "type": "paused",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-        }
-        await self.genesys_ws.send(json.dumps(paused_msg))
-
-    async def _handle_resume(self, data: dict):
-        """Handle resume — start processing audio again."""
-        logger.info("[GenesysHandler] Resumed")
-        self._paused = False
-        # Respond with 'resumed'
-        self._server_seq += 1
-        resumed_msg = {
-            "version": "2",
-            "type": "resumed",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id,
-        }
-        await self.genesys_ws.send(json.dumps(resumed_msg))
-
-    async def _send_disconnect(self, reason: str, message: str = ""):
-        """Send a disconnect message to terminate the session."""
-        self._server_seq += 1
-        disconnect_msg = {
-            "version": "2",
-            "type": "disconnect",
-            "seq": self._server_seq,
-            "clientseq": self._client_seq,
-            "id": self._session_id or str(uuid.uuid4()),
-            "parameters": {
-                "reason": reason,
-                "info": message,
-            },
-        }
-        await self.genesys_ws.send(json.dumps(disconnect_msg))
+        await self._audiohook.handle_text(message)
 
     # ------------------------------------------------------------------
     # Audio handling
@@ -274,7 +102,7 @@ class GenesysMediaHandler(VoiceLiveMediaHandler):
 
     async def _handle_audio_frame(self, frame: bytes):
         """Process incoming PCMU 8kHz audio from Genesys."""
-        if not self._session_open or self._paused:
+        if not self._audiohook.is_open or self._audiohook.paused:
             return
 
         self._in_frame_count += 1
