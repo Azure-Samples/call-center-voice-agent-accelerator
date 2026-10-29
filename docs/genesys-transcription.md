@@ -72,6 +72,9 @@ In transcription mode, `/` redirects to `/transcribe-test`, and the voice-agent 
 3. **AudioHook protocol:** set `GENESYS_API_KEY` and open `/genesys`. Select **Stereo**, choose a
    customer audio file, and connect. The simulator sends interleaved stereo PCMU exactly as Genesys
    AudioHook Monitor does. Open the logged `/transcript?conversationId=…` link to watch.
+4. **Sample audio and automated checks:** see
+   [`server/samples/transcription/`](../server/samples/transcription/README.md) for ready-made
+   customer/agent WAVs and scripts that verify both ingest paths end to end.
 
 ## Connecting Genesys Cloud
 
