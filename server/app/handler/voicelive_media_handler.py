@@ -105,6 +105,10 @@ class VoiceLiveMediaHandler:
     # Voice Live connection
     # ------------------------------------------------------------------
 
+    async def start(self):
+        """CallHandler entry point used by run_call_loop."""
+        await self.connect_voicelive()
+
     async def connect_voicelive(self):
         """Connect to Azure Voice Live API using the SDK."""
         t0 = time.perf_counter()
