@@ -561,7 +561,7 @@ azd up
 - Or open `/genesys` and select **Stereo** to exercise the real AudioHook protocol.
 - Set `TRANSCRIPTION_BACKEND=fake` for an offline UI check without Azure.
 
-See [docs/genesys-transcription.md](./docs/genesys-transcription.md) for configuration, Genesys AudioHook Monitor setup and the transcript event schema.
+See [docs/genesys-transcription.md](./docs/genesys-transcription.md) for configuration, Genesys AudioHook Monitor setup and the transcript event schema, and [docs/transcription-mode-changes.md](./docs/transcription-mode-changes.md) for every change made to the accelerator.
 
 ## Local Development
 

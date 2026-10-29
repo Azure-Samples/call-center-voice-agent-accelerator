@@ -7,6 +7,8 @@ and streamed to a browser view and to any downstream consumer of the transcript 
 (for example an agent-assist model).
 
 Enable it with `CALL_MODE=transcription`. The default, `voice_agent`, keeps the original behavior.
+For a file-by-file list of what changed from the base accelerator, see
+[transcription-mode-changes.md](transcription-mode-changes.md).
 
 ## Architecture
 
