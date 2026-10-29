@@ -90,3 +90,31 @@ async def test_session_start_failure_publishes_degraded_and_does_not_raise():
     assert ev.state == StreamState.DEGRADED
     await s.close()
     assert hub.active() == []
+
+
+class SlowStopBackend(FakeBackend):
+    def __init__(self):
+        super().__init__(16000)
+        self.stop_finished = False
+
+    async def stop(self):
+        await asyncio.sleep(0.2)
+        self.stop_finished = True
+
+
+async def test_session_close_cancelled_mid_stop_still_publishes_ended():
+    hub = TranscriptHub()
+    q = hub.subscribe("c1")
+    backend = SlowStopBackend()
+    s = TranscriptionSession(backend, hub, [Speaker.CUSTOMER])
+    await s.open("c1")
+    task = asyncio.create_task(s.close())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    states = [e.state for e in (q.get_nowait() for _ in range(q.qsize())) if isinstance(e, StatusEvent)]
+    assert states[-1] == StreamState.ENDED
+    assert hub.active() == []
+    await asyncio.sleep(0.3)
+    assert backend.stop_finished  # stop keeps running so recognizer resources are released

@@ -1,5 +1,6 @@
 """Binds one call's audio to a backend and publishes results to the hub."""
 
+import asyncio
 import logging
 from typing import Iterable
 
@@ -43,15 +44,18 @@ class TranscriptionSession:
         if self._closed:
             return
         self._closed = True
-        cid = self.conversation_id
-        if cid is not None:
-            # Stop even if start() never completed (e.g. cancelled) to release partial resources.
-            try:
-                await self.backend.stop()
-            except Exception:
-                logger.exception("[%s] Error stopping transcription backend", cid)
         self._ready = False
-        if cid is not None:
+        cid = self.conversation_id
+        if cid is None:
+            return
+        try:
+            # Stop even if start() never completed (e.g. cancelled) to release partial resources.
+            # Shielded: the WebSocket task is often cancelled right after an AudioHook close,
+            # while the recognizer is still draining.
+            await asyncio.shield(self.backend.stop())
+        except Exception:
+            logger.exception("[%s] Error stopping transcription backend", cid)
+        finally:
             self.hub.publish(StatusEvent(cid, StreamState.ENDED))
             self.hub.mark_ended(cid)
 
