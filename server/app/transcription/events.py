@@ -1,6 +1,5 @@
 """Transcript event model shared by backends, the hub and the web UI."""
 
-import json
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -39,9 +38,6 @@ class TranscriptEvent:
             "seq": self.seq,
         }
 
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
-
 
 @dataclass(frozen=True)
 class StatusEvent:
@@ -56,9 +52,6 @@ class StatusEvent:
             "state": str(self.state),
             "detail": self.detail,
         }
-
-    def to_json(self) -> str:
-        return json.dumps(self.to_dict())
 
 
 HubEvent = TranscriptEvent | StatusEvent

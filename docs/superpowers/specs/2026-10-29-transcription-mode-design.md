@@ -120,7 +120,7 @@ testable without Azure.
 ```
 
 Plus `{"type":"status","conversationId":"...","state":"connected|degraded|ended","detail":"..."}`.
-Implemented as dataclasses with `to_json()`. This schema is the contract for future consumers and is
+Implemented as dataclasses with `to_dict()`. This schema is the contract for future consumers and is
 documented.
 
 ### 5.3 `backend.py` — `TranscriptionBackend` interface (G6)
@@ -157,9 +157,8 @@ rate is per source (8 kHz Genesys, 16 kHz browser harness), so no resampling is 
 ### 5.5 `transcript_hub.py` — `TranscriptHub`
 
 In-process pub/sub keyed by `conversationId`: `subscribe(conv_id) -> asyncio.Queue`, `unsubscribe`,
-`publish(event)`, `active()`. Bounded per-subscriber queues; on overflow drop the oldest
-**partial** first; if only finals/status are queued, drop an incoming partial, else drop the oldest
-final with a warning. Single-replica scope for the POC; multi-replica fan-out (e.g. Azure Web PubSub)
+`publish(event)`, `active()`. Bounded per-subscriber queues; on overflow drop the oldest event
+with a warning. Single-replica scope for the POC; multi-replica fan-out (e.g. Azure Web PubSub)
 is a scale-out follow-up.
 
 ### 5.6 `GenesysTranscriptionHandler` (G4)
@@ -219,7 +218,7 @@ for the voice agent, backend start for transcription) instead of `connect_voicel
 | Retries exhausted | Publish `status: degraded` with detail; keep accepting and discarding audio until the source closes. |
 | Mono-only Genesys offer | Accept; label `customer`; log warning. |
 | No compatible media offer | Send AudioHook `disconnect` (existing behavior). |
-| Viewer slow or disconnected | Bounded queue; drop partials first; unsubscribe on disconnect. |
+| Viewer slow or disconnected | Bounded queue; drop oldest; unsubscribe on disconnect. |
 | Bad or missing token | Close `4403` (reuse `WEB_ACCESS_TOKEN` for `/web/transcribe/ws` and `/transcript/ws`); Genesys keeps `X-API-KEY`. |
 | Capacity reached | Close `4429` (existing `CallManager`). |
 

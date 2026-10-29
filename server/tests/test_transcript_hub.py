@@ -33,42 +33,13 @@ async def test_unsubscribe_stops_delivery():
     assert q.qsize() == 0
 
 
-async def test_overflow_drops_oldest_partial_first():
-    hub = TranscriptHub(max_queue=3)
-    q = hub.subscribe("c1")
-    hub.publish(_t("f1"))
-    hub.publish(_t("p1", final=False))
-    hub.publish(_t("f2"))
-    hub.publish(_t("f3"))
-    texts = [q.get_nowait().text for _ in range(q.qsize())]
-    assert texts == ["f1", "f2", "f3"]
-
-
-async def test_overflow_with_only_finals_drops_incoming_partial():
+async def test_overflow_drops_oldest():
     hub = TranscriptHub(max_queue=2)
     q = hub.subscribe("c1")
     hub.publish(_t("f1"))
-    hub.publish(_t("f2"))
-    hub.publish(_t("p", final=False))
-    texts = [q.get_nowait().text for _ in range(q.qsize())]
-    assert texts == ["f1", "f2"]
-
-
-async def test_overflow_with_only_finals_drops_oldest_final_for_new_final():
-    hub = TranscriptHub(max_queue=2)
-    q = hub.subscribe("c1")
-    hub.publish(_t("f1"))
-    hub.publish(_t("f2"))
-    hub.publish(_t("f3"))
-    texts = [q.get_nowait().text for _ in range(q.qsize())]
-    assert texts == ["f2", "f3"]
-
-
-async def test_status_events_are_never_dropped_for_partials():
-    hub = TranscriptHub(max_queue=1)
-    q = hub.subscribe("c1")
     hub.publish(_t("p", final=False))
     hub.publish(StatusEvent("c1", StreamState.ENDED))
+    assert q.get_nowait().text == "p"
     assert isinstance(q.get_nowait(), StatusEvent)
 
 

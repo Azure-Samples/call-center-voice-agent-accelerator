@@ -1,4 +1,3 @@
-import json
 import struct
 
 import numpy as np
@@ -34,7 +33,6 @@ def test_transcript_event_to_dict_uses_camel_case():
         "durationMs": 500,
         "seq": 3,
     }
-    assert json.loads(ev.to_json()) == d
 
 
 def test_status_event_to_dict():

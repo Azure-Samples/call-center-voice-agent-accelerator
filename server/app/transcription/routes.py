@@ -67,7 +67,7 @@ def register_transcription_routes(
         try:
             while True:
                 event = await q.get()
-                await websocket.send(event.to_json())
+                await websocket.send(json.dumps(event.to_dict()))
         except asyncio.CancelledError:
             pass
         finally:

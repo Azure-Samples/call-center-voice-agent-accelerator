@@ -4,22 +4,15 @@ import asyncio
 import logging
 from collections import defaultdict
 
-from app.transcription.events import HubEvent, TranscriptEvent
+from app.transcription.events import HubEvent
 
 logger = logging.getLogger(__name__)
-
-
-def _is_partial(ev: HubEvent) -> bool:
-    return isinstance(ev, TranscriptEvent) and not ev.is_final
 
 
 class TranscriptHub:
     """Publishes events to bounded per-subscriber queues.
 
-    Must be used from the event loop thread. When a queue is full, the oldest
-    partial is dropped first; partials are cheap to lose because a final
-    follows. If only finals/status are queued, an incoming partial is dropped,
-    otherwise the oldest final is dropped with a warning.
+    Must be used from the event loop thread. A full queue drops its oldest event.
     """
 
     def __init__(self, max_queue: int = 500):
@@ -45,22 +38,10 @@ class TranscriptHub:
             self._offer(q, event)
 
     def _offer(self, q: asyncio.Queue, event: HubEvent) -> None:
-        if not q.full():
-            q.put_nowait(event)
-            return
-        items = list(q._queue)  # deque snapshot; safe on the loop thread
-        drop = next((i for i, e in enumerate(items) if _is_partial(e)), None)
-        if drop is None:
-            if _is_partial(event):
-                return
-            drop = next(
-                (i for i, e in enumerate(items) if isinstance(e, TranscriptEvent)), 0
-            )
-            logger.warning(
-                "Transcript subscriber queue full for %s; dropping oldest final",
-                event.conversation_id,
-            )
-        del q._queue[drop]
+        if q.full():
+            # shortcut: a stalled viewer loses its oldest lines; add priority dropping if viewers lag in practice.
+            logger.warning("Transcript subscriber queue full for %s; dropping oldest", event.conversation_id)
+            q.get_nowait()
         q.put_nowait(event)
 
     def mark_active(self, conversation_id: str) -> None:
