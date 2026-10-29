@@ -28,6 +28,8 @@ param appInsightsConnectionString string = ''
 @description('The name of the container image')
 param imageName string = ''
 param debugMode bool = false
+@allowed(['voice_agent', 'transcription'])
+param callMode string = 'voice_agent'
 @description('Enable zone redundancy for the Container App Environment')
 param zoneRedundant bool = true
 
@@ -185,6 +187,10 @@ resource containerApp 'Microsoft.App/containerApps@2024-10-02-preview' = {
             {
               name: 'DEBUG_MODE'
               value: string(debugMode)
+            }
+            {
+              name: 'CALL_MODE'
+              value: callMode
             }
           ], !empty(acsConnectionStringSecretUri) ? [
             {

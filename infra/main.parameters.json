@@ -61,6 +61,9 @@
     },
     "debugMode": {
       "value": "${DEBUG_MODE=false}"
+    },
+    "callMode": {
+      "value": "${CALL_MODE=voice_agent}"
     }
   }
 }

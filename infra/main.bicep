@@ -77,6 +77,9 @@ param vonageApiSecret string = ''
 param vonageApplicationId string = ''
 @description('Enable debug mode for verbose logging in the container app')
 param debugMode bool = false
+@description('Call mode: voice_agent (AI agent answers calls) or transcription (live agent-assist transcript of human calls; Genesys only)')
+@allowed(['voice_agent', 'transcription'])
+param callMode string = 'voice_agent'
 
 var uniqueSuffix = substring(uniqueString(subscription().id, environmentName), 0, 5)
 var tags = {'azd-env-name': environmentName }
@@ -213,6 +216,7 @@ module containerapp 'modules/containerapp.bicep' = {
     vonageApplicationId: vonageApplicationId
     logAnalyticsWorkspaceName: logAnalyticsName
     debugMode: debugMode
+    callMode: callMode
     imageName: 'mcr.microsoft.com/azuredocs/containerapps-helloworld:latest'
   }
   dependsOn: [RoleAssignments]

@@ -36,7 +36,10 @@ COPY static /app/static/
 FROM python:3.12-slim-bookworm
 
 # Patch system packages and remove pip/setuptools (not needed at runtime — uv handles builds)
-RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/* && \
+# libasound2 + ca-certificates are runtime dependencies of the Azure Speech SDK (transcription mode)
+RUN apt-get update && apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends libasound2 ca-certificates && \
+    rm -rf /var/lib/apt/lists/* && \
     rm -rf /usr/local/lib/python3.12/site-packages/pip* \
            /usr/local/lib/python3.12/site-packages/setuptools* \
            /usr/local/lib/python3.12/dist-packages/pip* \
