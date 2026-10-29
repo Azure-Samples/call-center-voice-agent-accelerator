@@ -4,7 +4,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from quart import Quart, request, websocket
+from quart import Quart, redirect, request, websocket
 
 from app.call_loop import run_call_loop
 from app.call_manager import CallManager
@@ -37,6 +37,16 @@ app.config["AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID"] = os.getenv(
 app.config["AMBIENT_PRESET"] = os.getenv("AMBIENT_PRESET", "none")
 app.config["GENESYS_VOICELIVE_FORMAT"] = os.getenv("GENESYS_VOICELIVE_FORMAT", "pcm16")
 
+# Call mode: "voice_agent" (default, AI answers the call) or "transcription"
+# (listen-only, speaker-labeled live transcript for a human agent).
+app.config["CALL_MODE"] = os.getenv("CALL_MODE", "voice_agent").strip().lower()
+app.config["TRANSCRIPTION_BACKEND"] = os.getenv("TRANSCRIPTION_BACKEND", "azure_speech").strip().lower()
+app.config["TRANSCRIPTION_LANGUAGE"] = os.getenv("TRANSCRIPTION_LANGUAGE", "en-US")
+app.config["AZURE_SPEECH_ENDPOINT"] = os.getenv("AZURE_SPEECH_ENDPOINT", "")
+app.config["AZURE_SPEECH_KEY"] = os.getenv("AZURE_SPEECH_KEY", "")
+_call_mode = app.config["CALL_MODE"]
+logger.info("Call mode: %s", _call_mode)
+
 _default_model = app.config["VOICE_LIVE_MODEL"]
 
 # Web client authentication. The web WebSocket endpoint is publicly reachable,
@@ -45,7 +55,8 @@ _default_model = app.config["VOICE_LIVE_MODEL"]
 _web_access_token = os.getenv("WEB_ACCESS_TOKEN", "")
 if not _web_access_token:
     logger.warning(
-        "WEB_ACCESS_TOKEN is not set — the /web/ws endpoint is UNAUTHENTICATED. "
+        "WEB_ACCESS_TOKEN is not set — the web endpoints (/web/ws, /web/transcribe/ws, "
+        "/transcript/ws) are UNAUTHENTICATED. "
         "Set WEB_ACCESS_TOKEN to require a token (recommended for public deployments)."
     )
 
@@ -125,11 +136,10 @@ else:
     logger.warning("Telephony routes not registered — only web client available")
 
 # ---------------------------------------------------------------------------
-# Routes: Web client (always available)
+# Routes: Web client (always available; voice agent or transcription by mode)
 # ---------------------------------------------------------------------------
 
 
-@app.websocket("/web/ws")
 async def web_ws():
     """WebSocket endpoint for web clients to send audio to Voice Live."""
     cid = new_correlation_id()
@@ -168,16 +178,30 @@ async def web_ws():
         await handler.cleanup()
 
 
+if _call_mode == "transcription":
+    from app.transcription.routes import register_transcription_routes
+
+    register_transcription_routes(app, call_manager, _validate_web_token)
+    logger.info("Registered transcription routes (/transcribe-test, /transcript)")
+else:
+    app.websocket("/web/ws")(web_ws)
+
+
 @app.route("/")
 async def index():
-    """Serves the static index page."""
+    """Serves the static index page (the transcription harness in transcription mode)."""
+    if _call_mode == "transcription":
+        target = "/transcribe-test"
+        if request.query_string:
+            target += "?" + request.query_string.decode()
+        return redirect(target)
     return await app.send_static_file("index.html")
 
 
 @app.route("/health")
 async def health():
     """Liveness/readiness probe endpoint."""
-    return {"status": "healthy"}, 200
+    return {"status": "healthy", "mode": _call_mode}, 200
 
 
 if __name__ == "__main__":

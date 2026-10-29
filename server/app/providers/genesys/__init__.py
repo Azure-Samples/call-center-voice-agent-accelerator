@@ -27,9 +27,14 @@ def register_genesys_routes(app, call_manager: CallManager):
     import os
 
     from app.providers.genesys.media_handler import GenesysMediaHandler
+    from app.providers.genesys.transcription_handler import GenesysTranscriptionHandler
 
     # Load provider-specific config
     app.config["GENESYS_API_KEY"] = os.getenv("GENESYS_API_KEY", "")
+    transcription_mode = app.config.get("CALL_MODE") == "transcription"
+    logger.info(
+        "Genesys AudioHook mode: %s", "transcription (listen-only)" if transcription_mode else "voice agent"
+    )
 
     # Per-session model selection (for latency benchmarking across models).
     default_model = app.config["VOICE_LIVE_MODEL"]
@@ -47,11 +52,13 @@ def register_genesys_routes(app, call_manager: CallManager):
 
         # Validate API key: check X-API-KEY header (real Genesys) or query param (simulator)
         provided_key = websocket.headers.get("X-API-KEY", "") or websocket.args.get("apikey", "")
-        handler = GenesysMediaHandler(app.config)
-
-        # Choose the Voice Live model for this session (query param, pass-through).
-        handler.model = websocket.args.get("model", "").strip() or default_model
-        logger.info("Genesys session using model=%s", handler.model)
+        if transcription_mode:
+            handler = GenesysTranscriptionHandler(app.config)
+        else:
+            handler = GenesysMediaHandler(app.config)
+            # Choose the Voice Live model for this session (query param, pass-through).
+            handler.model = websocket.args.get("model", "").strip() or default_model
+            logger.info("Genesys session using model=%s", handler.model)
 
         if not handler.validate_api_key(provided_key):
             logger.warning("Invalid API key — rejecting connection")

@@ -93,12 +93,16 @@ testable without Azure.
 ### 5.1 Configuration — `CALL_MODE`
 
 - `CALL_MODE`: `voice_agent` (default) | `transcription`.
-- `TRANSCRIPTION_BACKEND`: `azure_speech` (default; only value this iteration).
+- `TRANSCRIPTION_BACKEND`: `azure_speech` (default) | `fake` (offline placeholder transcripts for
+  UI demos and tests; needs no Azure resources).
 - `TRANSCRIPTION_LANGUAGE`: default `en-US`.
-- Azure AI Speech reuses the existing AI Services resource (`AZURE_VOICE_LIVE_ENDPOINT`,
-  `AZURE_VOICE_LIVE_API_KEY`, or managed identity), plus `AZURE_SPEECH_REGION` if the SDK needs it.
+- Azure AI Speech reuses the existing AI Services resource via its endpoint
+  (`AZURE_SPEECH_ENDPOINT` → falls back to `AZURE_VOICE_LIVE_ENDPOINT`). Auth precedence: managed
+  identity (`AZURE_USER_ASSIGNED_IDENTITY_CLIENT_ID`), then key (`AZURE_SPEECH_KEY` →
+  `AZURE_VOICE_LIVE_API_KEY`), then `DefaultAzureCredential` (local `az login`). No region setting.
 - `config_validator.py` validates mode-specific settings; Voice Live model settings are not
-  required in transcription mode.
+  required in transcription mode. In transcription mode only the Genesys provider registers
+  telephony routes; other providers log a warning and are skipped.
 
 ### 5.2 `events.py` — `TranscriptEvent` (integration contract, G7)
 
@@ -127,32 +131,35 @@ class TranscriptionBackend(Protocol):
 
     async def start(
         self,
+        conversation_id: str,
         speakers: list[Speaker],
-        on_event: Callable[[TranscriptEvent], Awaitable[None]],
+        on_event: Callable[[TranscriptEvent | StatusEvent], None],  # called on the loop thread
     ) -> None: ...
-    async def push_audio(self, speaker: Speaker, pcm16: bytes) -> None: ...
+    def push_audio(self, speaker: Speaker, pcm16: bytes) -> None: ...  # non-blocking
     async def stop(self) -> None: ...
 ```
 
-`create_backend(config)` maps `TRANSCRIPTION_BACKEND` to an implementation. A `FakeBackend` emitting
-deterministic events supports tests.
+`create_backend(config, sample_rate)` maps `TRANSCRIPTION_BACKEND` to an implementation; the sample
+rate is per source (8 kHz Genesys, 16 kHz browser harness), so no resampling is needed. A
+`FakeBackend` emits one deterministic final line per ~2 s of audio per speaker.
 
 ### 5.4 `azure_speech_backend.py` — `AzureSpeechBackend`
 
-- Uses `azure-cognitiveservices-speech` (new dependency under a `transcription` extra).
+- Uses `azure-cognitiveservices-speech` (core dependency; the container installs `libasound2`).
 - One `SpeechRecognizer` with a `PushAudioInputStream` **per speaker channel**; continuous recognition.
 - `recognizing` → partial event; `recognized` → final event; `canceled` → `status: degraded`.
 - SDK callbacks fire on SDK threads; marshal to asyncio with `loop.call_soon_threadsafe`.
-- Auth: API key for local demo; managed identity token for deployed use (exact SDK auth form is
-  verified during implementation).
+- Auth: `SpeechConfig(endpoint=..., subscription=key)` or `SpeechConfig(endpoint=...,
+  token_credential=...)` (managed identity / `DefaultAzureCredential`).
 - Audio: PCM16 mono at 8 kHz per channel for telephony (no up-sampling); fall back to 16 kHz if
   accuracy testing requires it.
 
 ### 5.5 `transcript_hub.py` — `TranscriptHub`
 
 In-process pub/sub keyed by `conversationId`: `subscribe(conv_id) -> asyncio.Queue`, `unsubscribe`,
-`publish(event)`, `active()`. Bounded per-subscriber queues; on overflow drop oldest **partial**
-events, never finals. Single-replica scope for the POC; multi-replica fan-out (e.g. Azure Web PubSub)
+`publish(event)`, `active()`. Bounded per-subscriber queues; on overflow drop the oldest
+**partial** first; if only finals/status are queued, drop an incoming partial, else drop the oldest
+final with a warning. Single-replica scope for the POC; multi-replica fan-out (e.g. Azure Web PubSub)
 is a scale-out follow-up.
 
 ### 5.6 `GenesysTranscriptionHandler` (G4)
@@ -171,13 +178,13 @@ is a scale-out follow-up.
 ### 5.7 `WebTranscriptionHandler` + browser harness (G5)
 
 - WebSocket `/web/transcribe/ws?conversationId=...&token=...` receives **interleaved stereo PCM16 at
-  16 kHz** (left = customer, right = agent), de-interleaves, resamples to the backend rate, and
-  pushes per channel.
+  16 kHz** (left = customer, right = agent), de-interleaves, and pushes per channel (the backend
+  runs at 16 kHz for this source).
 - Harness page `/transcribe-test`: the **agent** channel is the microphone; the **customer** channel
-  is a second input device or an uploaded WAV file played into the stream. It links to the
+  is an uploaded audio file (e.g. a recorded customer call) played into the stream. It embeds the
   transcript view for the same `conversationId`.
-- The Genesys simulator (`providers/genesys/simulator.html`) gains a stereo option (mic + WAV) for
-  end-to-end AudioHook testing.
+- The Genesys simulator (`providers/genesys/simulator.html`) gains a stereo option (audio file as
+  customer + mic as agent) for end-to-end AudioHook testing.
 
 ### 5.8 Transcript view (G3)
 
@@ -196,7 +203,7 @@ is a scale-out follow-up.
 
 1. Source connects (Genesys `open`, or harness connect) → handler acquires a `CallManager` slot
    (existing limits/timeouts) → `backend.start([customer, agent], hub.publish)`.
-2. Audio frames → de-interleave → decode/resample → `backend.push_audio`.
+2. Audio frames → de-interleave → decode (PCMU → PCM16) → `backend.push_audio`.
 3. Backend emits partial/final `TranscriptEvent`s → `TranscriptHub.publish` → subscribed viewers.
 4. Final events are logged at `DEBUG` with the correlation ID (no persistence).
 5. Source closes → `backend.stop()` → hub publishes `status: ended` → slot released.
@@ -223,13 +230,13 @@ only at `DEBUG`, and the view is token-protected. Production use requires a data
 
 No new Azure resources: the existing `AIServices` account serves Azure AI Speech, and the container
 app identity already holds `Cognitive Services User`. Add `CALL_MODE` and transcription settings to
-the container app environment in `infra/`, `.env.sample`, and `azure.yaml` parameters. Verify that
+the container app environment in `infra/` (`callMode` parameter → `CALL_MODE`) and `.env.sample`. Verify that
 real-time Speech is available in the deployment region.
 
 ## 9. Testing
 
 - Add `pytest` and `pytest-asyncio` as dev dependencies; tests in `server/tests/`.
-- Unit: stereo PCMU de-interleave/decode; PCM16 de-interleave/resample; `TranscriptEvent`
+- Unit: stereo PCMU de-interleave/decode; PCM16 de-interleave; `TranscriptEvent`
   serialization; `TranscriptHub` fan-out and overflow policy; AudioHook media-offer selection
   (stereo preferred, mono fallback); mode-based route registration.
 - Handler tests with `FakeBackend`: Genesys `open` → stereo frames → events labeled correctly; no
