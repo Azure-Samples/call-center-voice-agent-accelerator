@@ -196,6 +196,22 @@ aiohttp = [
 ]
 
 [[package]]
+name = "azure-cognitiveservices-speech"
+version = "1.53.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "azure-core" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6f/89/719c9cdf25311701baf08053c2ecdf194d88ec4528c181554ca710aa6422/azure_cognitiveservices_speech-1.53.0-py3-none-macosx_10_14_x86_64.whl", hash = "sha256:2029c00d762ed519d98dd806d3f0817d27051857ca79156611a33b5efeaab66f", size = 3287354, upload-time = "2026-10-21T23:29:55.147Z" },
+    { url = "https://files.pythonhosted.org/packages/29/a1/ada3f0b5000ac5aac27d96e2cb61c652aa3f95a5fa0710efee9677c3fc55/azure_cognitiveservices_speech-1.53.0-py3-none-macosx_11_0_arm64.whl", hash = "sha256:3535d1b4de4ce9f04119c2f5dfdc63bb88276ce446ed28a7ec6e4185426c34a5", size = 3086332, upload-time = "2026-10-21T23:29:57.018Z" },
+    { url = "https://files.pythonhosted.org/packages/f8/87/6ff9d036dff70f25494d63d90760ce8cd302cb4d4c99472d7beeb3ee4f29/azure_cognitiveservices_speech-1.53.0-py3-none-manylinux1_x86_64.whl", hash = "sha256:e41a909b3480f6e12337c96f3f8cc6c8ea18cf263fee500158e49fd7b5eaa65c", size = 2692182, upload-time = "2026-10-21T23:29:58.925Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/8e/671f25453e14fc8dd45cd8bdf15dde7605a4852ccea4a62fa83ec6d80789/azure_cognitiveservices_speech-1.53.0-py3-none-manylinux2014_aarch64.whl", hash = "sha256:688badb3efbb7d424aba67996225adf8762be32bbeb1e27dda87fdbd26b192de", size = 2653091, upload-time = "2026-10-21T23:30:00.359Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/db/0ddbf3a6ef8e15e140855e2c7cdb5053e6ac4ffc34d2a521b673a2dcc7b9/azure_cognitiveservices_speech-1.53.0-py3-none-win_amd64.whl", hash = "sha256:30c9d87c6cd0b895848a29bf1789d4ab8b64021bdd909a36482b8a9aa1292c8f", size = 2415128, upload-time = "2026-10-21T23:30:01.830Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/ef/b3a0b3f183b2841d81d4d17fadbabf73c8415a825083518cb725430ed495/azure_cognitiveservices_speech-1.53.0-py3-none-win_arm64.whl", hash = "sha256:dfaecb0c1a102b180536350b241f46055c156a88d45e79e823003128d99ca256", size = 2248064, upload-time = "2026-10-21T23:30:03.206Z" },
+]
+
+[[package]]
 name = "azure-communication-callautomation"
 version = "1.5.0"
 source = { registry = "https://pypi.org/simple" }
@@ -679,6 +695,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iniconfig"
+version = "2.3.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2ff1cd706c7f3eeb9b62144bf60f77c9fb9ff2fb26bd3/iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960", size = 21209, upload-time = "2026-10-06T22:48:38.076Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
+]
+
+[[package]]
 name = "isodate"
 version = "0.7.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1054,6 +1079,24 @@ realtime = [
 ]
 
 [[package]]
+name = "packaging"
+version = "26.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
+]
+
+[[package]]
+name = "pluggy"
+version = "1.7.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bf/db/7fc19e6f2dc92a966727031389fc2e08b558f0f25eb7403c1119ad4713cd/pluggy-1.7.0.tar.gz", hash = "sha256:d1eaa46ebb595891b860ab086b4d09c8588af65ebd4361b8e8f4bb8920b90ba8", size = 123304, upload-time = "2026-10-15T09:50:58.343Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/40/9e/2b38731e0fc536806f16490e1a12d7f0dc2a1235aa8cc07bcc75416a7daa/pluggy-1.7.0-py3-none-any.whl", hash = "sha256:7dd7b0d8832ba3cb632c306926ded123429211b83641b35dc5c41ad2d34f9bec", size = 27082, upload-time = "2026-10-15T09:50:56.808Z" },
+]
+
+[[package]]
 name = "priority"
 version = "2.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1246,6 +1289,15 @@ wheels = [
 ]
 
 [[package]]
+name = "pygments"
+version = "2.21.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/2e/ced460408999b33da6b31b0021b0f37d329e202d4169aeb164493778f25b/pygments-2.21.0.tar.gz", hash = "sha256:610ca751c9bc2492b38eb9a38a7fbc93edbbb2d7182edaf34e66ae493dee5c8c", size = 5005329, upload-time = "2026-08-17T08:02:48.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/71/46/17f022dd3e953bf20a04a028a21ec746d942f8d2af30fa0f124fa0e6a684/pygments-2.21.0-py3-none-any.whl", hash = "sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9", size = 1250147, upload-time = "2026-08-17T08:02:44.912Z" },
+]
+
+[[package]]
 name = "pyjwt"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1257,6 +1309,35 @@ wheels = [
 [package.optional-dependencies]
 crypto = [
     { name = "cryptography" },
+]
+
+[[package]]
+name = "pytest"
+version = "9.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "iniconfig" },
+    { name = "packaging" },
+    { name = "pluggy" },
+    { name = "pygments" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
+]
+
+[[package]]
+name = "pytest-asyncio"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/e2/08a497ef684b88559c9cc5f4ad53a37e7b99e727094a86d6ea32536d5d3c/pytest_asyncio-1.4.0-py3-none-any.whl", hash = "sha256:933ca923a23075a87fb7070c0ec272a6848489824d887c85c812670932835aa1", size = 16930, upload-time = "2026-05-26T09:56:02.576Z" },
 ]
 
 [[package]]
@@ -1388,6 +1469,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
     { name = "azure-ai-voicelive", extra = ["aiohttp"] },
+    { name = "azure-cognitiveservices-speech" },
     { name = "azure-core" },
     { name = "azure-identity" },
     { name = "h2" },
@@ -1411,10 +1493,17 @@ twilio = [
     { name = "twilio" },
 ]
 
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "aiohttp", specifier = ">=3.14.3" },
     { name = "azure-ai-voicelive", extras = ["aiohttp"], specifier = ">=1.1.0" },
+    { name = "azure-cognitiveservices-speech", specifier = ">=1.45.0" },
     { name = "azure-communication-callautomation", marker = "extra == 'acs'", specifier = ">=1.5.0" },
     { name = "azure-core", specifier = ">=1.39.0" },
     { name = "azure-eventgrid", marker = "extra == 'acs'", specifier = ">=4.22.0" },
@@ -1432,6 +1521,12 @@ requires-dist = [
     { name = "websockets", specifier = ">=15.0.1" },
 ]
 provides-extras = ["acs", "twilio", "infobip", "genesys", "sinch", "bandwidth", "vonage"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.24" },
+]
 
 [[package]]
 name = "websockets"
