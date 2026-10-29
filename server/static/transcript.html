@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Call Transcript</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f4f8;
+      color: #333;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.75rem 1.25rem;
+      background: #fff;
+      border-bottom: 1px solid #dde3ea;
+    }
+    header h1 { font-size: 1.15rem; margin: 0; flex: 1; }
+    select, button {
+      font: inherit;
+      padding: 0.35rem 0.6rem;
+      border: 1px solid #c4ccd6;
+      border-radius: 0.35rem;
+      background: #fff;
+    }
+    #status {
+      padding: 0.25rem 0.7rem;
+      border-radius: 1rem;
+      font-size: 0.85rem;
+      background: #e1e5ea;
+      color: #555;
+    }
+    #status.connected { background: #dff6dd; color: #107c10; }
+    #status.degraded { background: #fff4ce; color: #8a6d00; }
+    #status.ended, #status.error { background: #fde7e9; color: #a4262c; }
+    .legend { display: flex; gap: 1rem; font-size: 0.85rem; color: #555; }
+    .dot { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 50%; margin-right: 0.3rem; vertical-align: middle; }
+    .dot.customer { background: #8a8886; }
+    .dot.agent { background: #0078d4; }
+    #transcript {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+    .msg { max-width: 70%; display: flex; flex-direction: column; }
+    .msg.customer { align-self: flex-start; }
+    .msg.agent { align-self: flex-end; align-items: flex-end; }
+    .msg.unknown { align-self: center; }
+    .who { font-size: 0.75rem; color: #777; margin: 0 0.4rem 0.15rem; }
+    .bubble {
+      padding: 0.55rem 0.85rem;
+      border-radius: 0.9rem;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .customer .bubble { background: #fff; border: 1px solid #dde3ea; border-bottom-left-radius: 0.2rem; }
+    .agent .bubble { background: #0078d4; color: #fff; border-bottom-right-radius: 0.2rem; }
+    .unknown .bubble { background: #edebe9; }
+    .partial .bubble { opacity: 0.6; font-style: italic; }
+    #empty { color: #888; text-align: center; margin-top: 3rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Live Call Transcript</h1>
+    <div class="legend">
+      <span><span class="dot customer"></span>Customer</span>
+      <span><span class="dot agent"></span>Agent</span>
+    </div>
+    <label for="conversation">Conversation</label>
+    <select id="conversation"><option value="">— waiting for calls —</option></select>
+    <button id="clearBtn" type="button">Clear</button>
+    <span id="status">Idle</span>
+  </header>
+  <main id="transcript"><div id="empty">Select an active conversation to view its live transcript.</div></main>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") || "";
+    const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
+    const transcriptEl = document.getElementById("transcript");
+    const selectEl = document.getElementById("conversation");
+    const statusEl = document.getElementById("status");
+    const SPEAKER_LABELS = { customer: "Customer", agent: "Agent", unknown: "Speaker" };
+
+    let socket = null;
+    let currentCid = null;
+    let ended = false;
+    let reconnectDelay = 1000;
+    let reconnectTimer = null;
+    let pending = {};  // speaker -> in-progress partial element
+
+    function setStatus(state, text) {
+      statusEl.className = state;
+      statusEl.textContent = text;
+    }
+
+    function clearTranscript(message) {
+      pending = {};
+      transcriptEl.innerHTML = "";
+      if (message) {
+        const empty = document.createElement("div");
+        empty.id = "empty";
+        empty.textContent = message;
+        transcriptEl.appendChild(empty);
+      }
+    }
+
+    function makeMessage(speaker) {
+      const wrap = document.createElement("div");
+      wrap.className = `msg ${speaker}`;
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = SPEAKER_LABELS[speaker] || speaker;
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      wrap.append(who, bubble);
+      const empty = document.getElementById("empty");
+      if (empty) empty.remove();
+      transcriptEl.appendChild(wrap);
+      return wrap;
+    }
+
+    function renderTranscript(ev) {
+      const speaker = ev.speaker in SPEAKER_LABELS ? ev.speaker : "unknown";
+      const atBottom = transcriptEl.scrollHeight - transcriptEl.scrollTop - transcriptEl.clientHeight < 60;
+      let el = pending[speaker];
+      if (!el) el = makeMessage(speaker);
+      el.querySelector(".bubble").textContent = ev.text;
+      if (ev.isFinal) {
+        el.classList.remove("partial");
+        delete pending[speaker];
+      } else {
+        el.classList.add("partial");
+        pending[speaker] = el;
+      }
+      if (atBottom) transcriptEl.scrollTop = transcriptEl.scrollHeight;
+    }
+
+    function renderStatus(ev) {
+      if (ev.state === "connected") setStatus("connected", "Live");
+      else if (ev.state === "degraded") setStatus("degraded", "Degraded" + (ev.detail ? `: ${ev.detail}` : ""));
+      else if (ev.state === "ended") {
+        ended = true;
+        setStatus("ended", "Call ended");
+        for (const el of Object.values(pending)) el.classList.remove("partial");
+        pending = {};
+      }
+    }
+
+    function connect(cid) {
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      if (socket) { socket.onclose = null; socket.close(); socket = null; }
+      currentCid = cid;
+      ended = false;
+      if (!cid) { setStatus("", "Idle"); return; }
+      const url = `${wsProto}://${window.location.host}/transcript/ws?conversationId=${encodeURIComponent(cid)}`
+        + (token ? `&token=${encodeURIComponent(token)}` : "");
+      setStatus("", "Connecting…");
+      socket = new WebSocket(url);
+      socket.onopen = () => { reconnectDelay = 1000; setStatus("connected", "Waiting for speech…"); };
+      socket.onmessage = (msg) => {
+        let ev;
+        try { ev = JSON.parse(msg.data); } catch { return; }
+        if (ev.type === "transcript") renderTranscript(ev);
+        else if (ev.type === "status") renderStatus(ev);
+      };
+      socket.onclose = (e) => {
+        socket = null;
+        if (e.code === 4403) { setStatus("error", "Invalid token — add ?token=… to the URL"); return; }
+        if (e.code === 4400) { setStatus("error", "Invalid conversation ID"); return; }
+        if (ended || currentCid !== cid) return;
+        setStatus("degraded", "Disconnected — reconnecting…");
+        reconnectTimer = setTimeout(() => connect(cid), reconnectDelay);
+        reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+      };
+    }
+
+    function ensureOption(cid, label) {
+      if (![...selectEl.options].some(o => o.value === cid)) {
+        const opt = document.createElement("option");
+        opt.value = cid;
+        opt.textContent = label || cid;
+        selectEl.appendChild(opt);
+      }
+    }
+
+    async function refreshActive() {
+      try {
+        const res = await fetch(`/transcript/active${token ? `?token=${encodeURIComponent(token)}` : ""}`);
+        if (res.status === 403) { setStatus("error", "Invalid token — add ?token=… to the URL"); return; }
+        const { conversations } = await res.json();
+        const active = new Set(conversations);
+        for (const opt of [...selectEl.options]) {
+          if (opt.value && !active.has(opt.value) && opt.value !== currentCid) opt.remove();
+        }
+        for (const cid of conversations) ensureOption(cid);
+        selectEl.options[0].textContent = conversations.length ? "— select a conversation —" : "— waiting for calls —";
+        // Auto-follow the newest call when nothing is selected
+        if (!currentCid && conversations.length) {
+          const cid = conversations[conversations.length - 1];
+          selectEl.value = cid;
+          clearTranscript();
+          connect(cid);
+        }
+      } catch { /* server unreachable; retry on next poll */ }
+    }
+
+    selectEl.addEventListener("change", () => {
+      clearTranscript(selectEl.value ? "" : "Select an active conversation to view its live transcript.");
+      connect(selectEl.value);
+    });
+    document.getElementById("clearBtn").addEventListener("click", () => clearTranscript());
+
+    const initialCid = params.get("conversationId");
+    if (initialCid) {
+      ensureOption(initialCid);
+      selectEl.value = initialCid;
+      clearTranscript("Waiting for speech…");
+      connect(initialCid);
+    }
+    refreshActive();
+    setInterval(refreshActive, 3000);
+  </script>
+</body>
+</html>

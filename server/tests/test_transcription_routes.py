@@ -80,3 +80,14 @@ async def test_web_transcribe_ws_streams_to_transcript_viewer():
         speakers = {m["speaker"] for m in seen if m["type"] == "transcript"}
         assert speakers == {"customer", "agent"}
         assert seen[0] == {"type": "status", "conversationId": "demo1", "state": "connected", "detail": ""}
+
+
+@pytest.mark.parametrize("path,marker", [
+    ("/transcript", "/transcript/ws"),
+    ("/transcribe-test", "/web/transcribe/ws"),
+])
+async def test_pages_are_served(path, marker):
+    app, _ = _app(token="t")
+    resp = await app.test_client().get(path)
+    assert resp.status_code == 200
+    assert marker in (await resp.get_data(as_text=True))

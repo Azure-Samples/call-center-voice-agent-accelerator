@@ -106,9 +106,20 @@
       <h2>Audio Settings</h2>
       <label>Media Format</label>
       <input type="text" value="PCMU (μ-law 8kHz)" readonly style="background:#2a2a2a;color:#888;cursor:default;" />
-      <label>Channels</label>
-      <input type="text" value="external only" readonly style="background:#2a2a2a;color:#888;cursor:default;" />
-      <p style="color:#888;font-size:0.85rem;margin-top:0.5rem;">
+      <label for="channelMode">Channels</label>
+      <select id="channelMode" onchange="onChannelModeChange()">
+        <option value="mono">Mono — external only (voice agent / Audio Connector)</option>
+        <option value="stereo">Stereo — external + internal (transcription / AudioHook Monitor)</option>
+      </select>
+      <div id="stereoOptions" style="display:none;">
+        <label for="customerFile">Customer audio file (external channel)</label>
+        <input type="file" id="customerFile" accept="audio/*" />
+        <p style="color:#888;font-size:0.85rem;margin-top:0.5rem;">
+          Stereo: the audio file plays as the customer (external), your microphone is the agent (internal).
+          Open <a id="transcriptLink" href="/transcript" target="_blank" style="color:#4fc3f7;">/transcript</a> to watch the live transcript.
+        </p>
+      </div>
+      <p id="monoHint" style="color:#888;font-size:0.85rem;margin-top:0.5rem;">
         Audio Connector: server receives external channel only and can send audio back.
       </p>
     </div>
@@ -145,6 +156,15 @@
     let audioFramesRecv = 0;
     let pingInterval = null;
     let workletNode = null;
+    let conversationId = null;
+    let fileSource = null;
+
+    function isStereo() { return document.getElementById("channelMode").value === "stereo"; }
+
+    function onChannelModeChange() {
+      document.getElementById("stereoOptions").style.display = isStereo() ? "" : "none";
+      document.getElementById("monoHint").style.display = isStereo() ? "none" : "";
+    }
 
     function log(msg, cls = "log-info") {
       const el = document.getElementById("log");
@@ -238,7 +258,11 @@
       const wsUrl = document.getElementById("wsUrl").value;
 
       if (!apiKey) { alert("API Key is required"); return; }
+      if (isStereo() && !document.getElementById("customerFile").files[0]) {
+        alert("Choose a customer audio file for stereo mode"); return;
+      }
       sessionId = crypto.randomUUID();
+      conversationId = crypto.randomUUID();
       clientSeq = 0;
       serverSeq = 0;
       audioFramesSent = 0;
@@ -319,7 +343,7 @@
         parameters: {
           startTime: new Date().toISOString(),
           organizationId: document.getElementById("orgId").value,
-          conversationId: crypto.randomUUID(),
+          conversationId: conversationId,
           participant: {
             id: crypto.randomUUID(),
             ani: document.getElementById("ani").value,
@@ -330,7 +354,7 @@
             {
               type: "audio",
               format: "PCMU",
-              channels: ["external"],
+              channels: isStereo() ? ["external", "internal"] : ["external"],
               rate: 8000
             }
           ],
@@ -338,7 +362,12 @@
         }
       };
       socket.send(JSON.stringify(openMsg));
-      log(`→ open (seq=${clientSeq})`, "log-send");
+      log(`→ open (seq=${clientSeq}, conversationId=${conversationId})`, "log-send");
+      if (isStereo()) {
+        const link = document.getElementById("transcriptLink");
+        link.href = "/transcript?conversationId=" + encodeURIComponent(conversationId);
+        log(`Live transcript: ${link.href} (add &token=... if WEB_ACCESS_TOKEN is set)`, "log-info");
+      }
     }
 
     function sendPing() {
@@ -415,70 +444,92 @@
       }
     }
 
-    async function startMicrophone() {
-      mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      });
-      source = audioContext.createMediaStreamSource(mediaStream);
-      // At 24kHz sample rate, 2048 buffer = ~85ms chunks
-      scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
-      // Downsample ratio: 24kHz → 8kHz = 3:1
+    // Anti-aliased 24kHz → 8kHz decimator (13-tap windowed-sinc FIR, overlap-save), one per channel
+    function makeDownsampler() {
       const RATIO = 3;
-
-      // Simple anti-aliasing FIR filter (13 taps, cutoff ~3.5kHz at 24kHz)
       const filterLen = 13;
       const filter = new Float32Array(filterLen);
       const fc = 3500 / 24000;
       const mid = (filterLen - 1) / 2;
       let filterSum = 0;
       for (let i = 0; i < filterLen; i++) {
-        if (i === mid) {
-          filter[i] = 2 * Math.PI * fc;
-        } else {
-          filter[i] = Math.sin(2 * Math.PI * fc * (i - mid)) / (i - mid);
-        }
+        filter[i] = i === mid ? 2 * Math.PI * fc : Math.sin(2 * Math.PI * fc * (i - mid)) / (i - mid);
         filter[i] *= 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (filterLen - 1));
         filterSum += filter[i];
       }
       for (let i = 0; i < filterLen; i++) filter[i] /= filterSum;
-
       let prevTail = new Float32Array(filterLen - 1);
 
-      scriptProcessor.onaudioprocess = (event) => {
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
-        const input = event.inputBuffer.getChannelData(0);
-
-        // Overlap-save FIR filtering
+      return (input) => {
         const extended = new Float32Array(prevTail.length + input.length);
         extended.set(prevTail);
         extended.set(input, prevTail.length);
-
-        const filtered = new Float32Array(input.length);
-        for (let i = 0; i < input.length; i++) {
-          let sum = 0;
-          for (let j = 0; j < filterLen; j++) {
-            sum += extended[i + j] * filter[j];
-          }
-          filtered[i] = sum;
-        }
         prevTail = input.slice(input.length - (filterLen - 1));
-
-        // Decimate by 3 (24kHz → 8kHz)
-        const outputLen = Math.floor(filtered.length / RATIO);
-        const downsampled = new Float32Array(outputLen);
-        for (let i = 0; i < outputLen; i++) {
-          downsampled[i] = filtered[i * RATIO];
+        const outputLen = Math.floor(input.length / RATIO);
+        const out = new Float32Array(outputLen);
+        for (let o = 0; o < outputLen; o++) {
+          const i = o * RATIO;
+          let sum = 0;
+          for (let j = 0; j < filterLen; j++) sum += extended[i + j] * filter[j];
+          out[o] = sum;
         }
+        return out;
+      };
+    }
 
-        // Encode as PCMU and send
-        const ulaw = float32ToUlaw(downsampled);
+    async function startMicrophone() {
+      const stereo = isStereo();
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+      });
+      source = audioContext.createMediaStreamSource(mediaStream);
+      // At 24kHz sample rate, 2048 buffer = ~85ms chunks
+      scriptProcessor = audioContext.createScriptProcessor(2048, stereo ? 2 : 1, stereo ? 2 : 1);
+      const downsamplers = stereo ? [makeDownsampler(), makeDownsampler()] : [makeDownsampler()];
+
+      if (stereo) {
+        // Channel 0 = external (customer, audio file), channel 1 = internal (agent, microphone)
+        const file = document.getElementById("customerFile").files[0];
+        const decoded = await audioContext.decodeAudioData(await file.arrayBuffer());
+        fileSource = audioContext.createBufferSource();
+        fileSource.buffer = decoded;
+        const fileMono = audioContext.createGain();
+        fileMono.channelCount = 1;
+        fileMono.channelCountMode = "explicit";
+        fileSource.connect(fileMono);
+        const merger = audioContext.createChannelMerger(2);
+        fileMono.connect(merger, 0, 0);
+        source.connect(merger, 0, 1);
+        merger.connect(scriptProcessor);
+        fileSource.connect(audioContext.destination);  // let the user hear the customer side
+        fileSource.onended = () => log("Customer audio file finished", "log-info");
+        fileSource.start();
+        log(`Playing customer file "${file.name}" (${decoded.duration.toFixed(1)}s) on external channel`, "log-info");
+      } else {
+        source.connect(scriptProcessor);
+      }
+
+      scriptProcessor.onaudioprocess = (event) => {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return;
+        let ulaw;
+        if (stereo) {
+          const ext = float32ToUlaw(downsamplers[0](event.inputBuffer.getChannelData(0)));
+          const int = float32ToUlaw(downsamplers[1](event.inputBuffer.getChannelData(1)));
+          // AudioHook stereo PCMU: one byte per channel, interleaved in media channel order
+          ulaw = new Uint8Array(ext.length * 2);
+          for (let i = 0; i < ext.length; i++) {
+            ulaw[2 * i] = ext[i];
+            ulaw[2 * i + 1] = int[i];
+          }
+        } else {
+          ulaw = float32ToUlaw(downsamplers[0](event.inputBuffer.getChannelData(0)));
+        }
         socket.send(ulaw.buffer);
         audioFramesSent++;
-        if (audioFramesSent === 1) log("Streaming microphone audio...", "log-audio");
+        if (audioFramesSent === 1) log(stereo ? "Streaming stereo audio (file + mic)..." : "Streaming microphone audio...", "log-audio");
         else if (audioFramesSent % 200 === 0) log(`Audio frames sent: ${audioFramesSent}`, "log-audio");
       };
 
-      source.connect(scriptProcessor);
       scriptProcessor.connect(audioContext.destination);
     }
 
@@ -495,6 +546,7 @@
     function cleanup() {
       if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
       if (scriptProcessor) { scriptProcessor.disconnect(); scriptProcessor = null; }
+      if (fileSource) { try { fileSource.stop(); } catch {} fileSource = null; }
       if (mediaStream) { mediaStream.getTracks().forEach(t => t.stop()); mediaStream = null; }
       stopPlayback();
       if (workletNode) { workletNode.disconnect(); workletNode = null; }

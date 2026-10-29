@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Transcription Test Harness</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f0f4f8;
+      color: #333;
+      display: flex;
+      height: 100vh;
+    }
+    aside {
+      width: 360px;
+      padding: 1.25rem;
+      background: #fff;
+      border-right: 1px solid #dde3ea;
+      overflow-y: auto;
+    }
+    h1 { font-size: 1.25rem; margin-top: 0; }
+    p.hint { font-size: 0.85rem; color: #666; line-height: 1.4; }
+    label { display: block; font-weight: 600; font-size: 0.9rem; margin: 1rem 0 0.3rem; }
+    input[type=file], input[type=text] { width: 100%; font: inherit; }
+    .row { display: flex; gap: 0.5rem; margin-top: 1.25rem; }
+    button {
+      flex: 1;
+      padding: 0.7rem 1rem;
+      font-size: 1rem;
+      border: none;
+      border-radius: 0.45rem;
+      cursor: pointer;
+      color: #fff;
+    }
+    button:disabled { opacity: 0.5; cursor: default; }
+    #startBtn { background: #0078d4; }
+    #stopBtn { background: #e81123; }
+    .meter { height: 8px; background: #e1e5ea; border-radius: 4px; overflow: hidden; margin-top: 0.3rem; }
+    .meter > div { height: 100%; width: 0; transition: width 0.1s; }
+    #customerMeter > div { background: #8a8886; }
+    #agentMeter > div { background: #0078d4; }
+    #statusText { margin-top: 1rem; font-size: 0.9rem; color: #555; }
+    #log { margin-top: 1rem; font-family: Consolas, monospace; font-size: 0.75rem; color: #666; white-space: pre-wrap; }
+    main { flex: 1; display: flex; }
+    iframe { flex: 1; border: none; }
+  </style>
+</head>
+<body>
+  <aside>
+    <h1>Transcription Test Harness</h1>
+    <p class="hint">
+      Simulates a two-party call: the <b>customer</b> channel is an audio file (for example a recorded
+      customer call) and the <b>agent</b> channel is your microphone. Audio streams to the server as
+      16 kHz stereo and the live transcript appears on the right.
+    </p>
+
+    <label for="customerFile">Customer audio file (left channel)</label>
+    <input type="file" id="customerFile" accept="audio/*" />
+
+    <label><input type="checkbox" id="playCustomer" checked /> Play customer audio through speakers</label>
+    <label><input type="checkbox" id="useMic" checked /> Use microphone as agent (right channel)</label>
+
+    <label for="conversationId">Conversation ID (optional)</label>
+    <input type="text" id="conversationId" placeholder="auto-generated" />
+
+    <div class="row">
+      <button id="startBtn" type="button">Start</button>
+      <button id="stopBtn" type="button" disabled>Stop</button>
+    </div>
+
+    <label>Customer level</label>
+    <div class="meter" id="customerMeter"><div></div></div>
+    <label>Agent level</label>
+    <div class="meter" id="agentMeter"><div></div></div>
+
+    <div id="statusText">Idle</div>
+    <div id="log"></div>
+  </aside>
+  <main><iframe id="transcriptFrame" title="Live transcript" src="about:blank"></iframe></main>
+
+  <script>
+    const SAMPLE_RATE = 16000;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") || "";
+    const wsProto = window.location.protocol === "https:" ? "wss" : "ws";
+    const startBtn = document.getElementById("startBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const frame = document.getElementById("transcriptFrame");
+
+    let socket = null;
+    let audioContext = null;
+    let micStream = null;
+    let fileSource = null;
+    let processor = null;
+    let framesSent = 0;
+
+    function setStatus(text) { document.getElementById("statusText").textContent = text; }
+    function log(text) {
+      const el = document.getElementById("log");
+      el.textContent += `[${new Date().toISOString().substring(11, 19)}] ${text}\n`;
+    }
+    function setMeter(id, samples) {
+      let peak = 0;
+      for (let i = 0; i < samples.length; i++) peak = Math.max(peak, Math.abs(samples[i]));
+      document.querySelector(`#${id} > div`).style.width = `${Math.min(100, peak * 140)}%`;
+    }
+    function transcriptUrl(cid) {
+      return `/transcript?conversationId=${encodeURIComponent(cid)}` + (token ? `&token=${encodeURIComponent(token)}` : "");
+    }
+    function toInt16(s) {
+      const v = Math.max(-1, Math.min(1, s));
+      return v < 0 ? v * 0x8000 : v * 0x7fff;
+    }
+
+    async function start() {
+      const file = document.getElementById("customerFile").files[0];
+      const useMic = document.getElementById("useMic").checked;
+      if (!file && !useMic) { alert("Choose a customer audio file and/or enable the microphone."); return; }
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      framesSent = 0;
+
+      try {
+        audioContext = new AudioContext({ sampleRate: SAMPLE_RATE });
+        const merger = audioContext.createChannelMerger(2);
+
+        if (file) {
+          const decoded = await audioContext.decodeAudioData(await file.arrayBuffer());
+          fileSource = audioContext.createBufferSource();
+          fileSource.buffer = decoded;
+          const mono = audioContext.createGain();
+          mono.channelCount = 1;
+          mono.channelCountMode = "explicit";
+          fileSource.connect(mono);
+          mono.connect(merger, 0, 0);
+          if (document.getElementById("playCustomer").checked) fileSource.connect(audioContext.destination);
+          fileSource.onended = () => log("Customer audio finished");
+          log(`Customer file "${file.name}" (${decoded.duration.toFixed(1)}s)`);
+        }
+        if (useMic) {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
+          });
+          audioContext.createMediaStreamSource(micStream).connect(merger, 0, 1);
+          log("Microphone connected as agent");
+        }
+
+        processor = audioContext.createScriptProcessor(4096, 2, 2);
+        merger.connect(processor);
+        processor.connect(audioContext.destination);  // required for onaudioprocess; output stays silent
+
+        const cid = document.getElementById("conversationId").value.trim();
+        let url = `${wsProto}://${window.location.host}/web/transcribe/ws?`;
+        const q = new URLSearchParams();
+        if (cid) q.set("conversationId", cid);
+        if (token) q.set("token", token);
+        socket = new WebSocket(url + q.toString());
+        socket.binaryType = "arraybuffer";
+        setStatus("Connecting…");
+
+        let streaming = false;
+        socket.onmessage = (msg) => {
+          if (typeof msg.data !== "string") return;
+          let data;
+          try { data = JSON.parse(msg.data); } catch { return; }
+          if (data.type === "session") {
+            log(`Session started: ${data.conversationId}`);
+            frame.src = transcriptUrl(data.conversationId);
+            streaming = true;
+            setStatus(`Streaming — conversation ${data.conversationId}`);
+            if (fileSource) fileSource.start();
+          }
+        };
+        socket.onclose = (e) => {
+          const reasons = { 4403: "Invalid token — add ?token=… to the URL", 4429: "Server is at max concurrent calls", 4400: "Invalid conversation ID" };
+          setStatus(reasons[e.code] || `Disconnected (code ${e.code})`);
+          log(`WebSocket closed (code ${e.code})`);
+          stop(false);
+        };
+
+        processor.onaudioprocess = (ev) => {
+          const left = ev.inputBuffer.getChannelData(0);
+          const right = ev.inputBuffer.getChannelData(1);
+          setMeter("customerMeter", left);
+          setMeter("agentMeter", right);
+          if (!streaming || !socket || socket.readyState !== WebSocket.OPEN) return;
+          const out = new Int16Array(left.length * 2);
+          for (let i = 0; i < left.length; i++) {
+            out[2 * i] = toInt16(left[i]);
+            out[2 * i + 1] = toInt16(right[i]);
+          }
+          socket.send(out.buffer);
+          framesSent++;
+        };
+      } catch (err) {
+        log(`Error: ${err.message || err}`);
+        setStatus("Failed to start");
+        stop(true);
+      }
+    }
+
+    function stop(closeSocket = true) {
+      if (processor) { processor.disconnect(); processor.onaudioprocess = null; processor = null; }
+      if (fileSource) { try { fileSource.stop(); } catch {} fileSource = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      if (audioContext) { audioContext.close(); audioContext = null; }
+      if (closeSocket && socket) { socket.onclose = null; socket.close(); setStatus("Stopped"); }
+      if (socket || framesSent) log(`Sent ${framesSent} audio frames`);
+      socket = null;
+      framesSent = 0;
+      startBtn.disabled = false;
+      stopBtn.disabled = true;
+    }
+
+    startBtn.addEventListener("click", start);
+    stopBtn.addEventListener("click", () => stop(true));
+  </script>
+</body>
+</html>
