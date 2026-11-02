@@ -227,10 +227,16 @@ Use this browser-based client to confirm your Container App is up and responding
 2. Find and open the **Container App** resource.
 3. On the **Overview** page, copy the **Application URL**.
 4. Open the URL in your browser — a demo webpage should load.
-5. Click **Start Talking to Agent** to begin a voice session using your browser’s microphone and speaker.
-6. Click **Stop Conversation** to end the session.
+5. Paste the web access token into the **Access token** field. `azd up` generates it automatically; print it with:
+   ```bash
+   azd env get-value WEB_ACCESS_TOKEN
+   ```
+6. Click **Start Talking to Agent** to begin a voice session using your browser’s microphone and speaker.
+7. Click **Stop Conversation** to end the session.
 
 > ⚠️ This web client is intended for testing purposes only. Use the ACS client below for production-like call flow testing.
+
+> 🔒 Every web session consumes Voice Live usage billed to your deployment, so `/web/ws` rejects any connection without a valid `WEB_ACCESS_TOKEN` (and rejects all connections if the token is not configured). Treat the token as a secret, and rotate it with `azd env set WEB_ACCESS_TOKEN <new-value>` followed by `azd provision`.
 
 
 

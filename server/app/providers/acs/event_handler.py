@@ -1,10 +1,15 @@
 """Handler for processing ACS (Azure Communication Services) call and callback events."""
 
+import hashlib
+import hmac
 import json
 import logging
+import secrets
+import time
 import uuid
 from urllib.parse import urlencode, urlparse, urlunparse
 
+import jwt
 from azure.communication.callautomation import (AudioFormat,
                                                 MediaStreamingAudioChannelType,
                                                 MediaStreamingContentType,
@@ -16,14 +21,62 @@ from quart import Response
 
 logger = logging.getLogger(__name__)
 
+# Media WebSocket token lifetime. The token only needs to survive the brief
+# window between answering the call and ACS opening the media WebSocket.
+_WS_TOKEN_TTL_SECONDS = 120
+_WS_TOKEN_AUDIENCE = "acs-media-ws"
+
 
 class AcsEventHandler:
     """Handles ACS event processing and call answering logic."""
 
     def __init__(self, config):
+        connection_string = config["ACS_CONNECTION_STRING"]
         self.acs_client = CallAutomationClient.from_connection_string(
-            config["ACS_CONNECTION_STRING"]
+            connection_string
         )
+        # Derive a dedicated signing key from the ACS connection string (which
+        # every replica already has) so the raw access key is never used directly.
+        self._ws_token_key = hmac.new(
+            connection_string.encode(), b"acs-media-ws-token", hashlib.sha256
+        ).digest()
+
+    # ------------------------------------------------------------------
+    # Media WebSocket token (stateless, signed, short-lived)
+    # ------------------------------------------------------------------
+
+    def _issue_ws_token(self) -> str:
+        """Mint a signed, self-contained token for one call's media WebSocket.
+
+        The token is embedded in the transport URL handed to ACS when answering
+        the call, so only ACS (and this server) ever see it. Any replica can
+        verify it with the shared key, so no cross-replica store is required.
+        """
+        now = int(time.time())
+        payload = {
+            "iat": now,
+            "exp": now + _WS_TOKEN_TTL_SECONDS,
+            "aud": _WS_TOKEN_AUDIENCE,
+            "jti": secrets.token_urlsafe(8),
+        }
+        return jwt.encode(payload, self._ws_token_key, algorithm="HS256")
+
+    def validate_ws_token(self, token: str) -> bool:
+        """Validate a media WebSocket token: signature, audience and expiry."""
+        if not token or not isinstance(token, str):
+            return False
+        try:
+            jwt.decode(
+                token,
+                self._ws_token_key,
+                algorithms=["HS256"],
+                audience=_WS_TOKEN_AUDIENCE,
+                options={"require": ["exp", "aud"]},
+            )
+        except jwt.InvalidTokenError as e:
+            logger.warning("[AcsEventHandler] Rejecting media WS token: %s", e)
+            return False
+        return True
 
     async def process_incoming_call(self, events: list, host_url, config):
         """Processes incoming call events and answers calls with media streaming."""
@@ -72,10 +125,14 @@ class AcsEventHandler:
                 )
 
                 logger.info("callback url: %s", callback_uri)
+                # Log the URL before the token is attached so it never reaches logs.
                 logger.info("websocket url: %s", websocket_url)
+                transport_url = (
+                    f"{websocket_url}?{urlencode({'token': self._issue_ws_token()})}"
+                )
 
                 media_streaming_options = MediaStreamingOptions(
-                    transport_url=websocket_url,
+                    transport_url=transport_url,
                     transport_type=StreamingTransportType.WEBSOCKET,
                     content_type=MediaStreamingContentType.AUDIO,
                     audio_channel_type=MediaStreamingAudioChannelType.MIXED,

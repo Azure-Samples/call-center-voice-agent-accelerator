@@ -6,6 +6,8 @@ This project is managed using `pyproject.toml` and the [`uv`](https://github.com
 ### Set Up Environment Variables
 Based on `.env.sample`, create a `.env` file to allow your local app to access your Azure resource.
 
+Set `WEB_ACCESS_TOKEN` to a random value (for example the one `azd up` generated: `azd env get-value WEB_ACCESS_TOKEN`). The web endpoint rejects every connection when it is unset.
+
 ### Run the App Locally
 1. Run the local server:
 
@@ -15,7 +17,7 @@ Based on `.env.sample`, create a `.env` file to allow your local app to access y
 
 3. Once the app is running, open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser (or click the printed URL in the terminal).
 
-4. On the page, click **Start** to begin speaking with the agent using your browser’s microphone and speaker.
+4. On the page, enter your `WEB_ACCESS_TOKEN` in the **Access token** field, then click **Start** to begin speaking with the agent using your browser’s microphone and speaker.
 
 ### Run with Docker (Alternative)
 

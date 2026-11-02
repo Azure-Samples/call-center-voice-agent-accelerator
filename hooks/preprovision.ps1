@@ -136,6 +136,25 @@ if ($regionModelSupport.ContainsKey($modelName) -and -not [string]::IsNullOrWhit
     }
 }
 
+# --- Web client access token ---
+# /web/ws opens a paid Voice Live session per connection, so the server rejects
+# every web connection unless WEB_ACCESS_TOKEN is set. Generate a strong random
+# token once per environment; an existing value (e.g. a pipeline secret) is kept.
+$webAccessToken = azd env get-value WEB_ACCESS_TOKEN 2>$null
+if ($LASTEXITCODE -ne 0) { $webAccessToken = "" }
+if ([string]::IsNullOrWhiteSpace($webAccessToken)) {
+    $tokenBytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    $rng.GetBytes($tokenBytes)
+    $rng.Dispose()
+    $webAccessToken = [Convert]::ToBase64String($tokenBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    azd env set WEB_ACCESS_TOKEN $webAccessToken
+    Write-Host "Web client access token generated (view it with: azd env get-value WEB_ACCESS_TOKEN)" -ForegroundColor Green
+}
+else {
+    Write-Host "Web client access token: already configured" -ForegroundColor Green
+}
+
 # --- Telephony configuration ---
 $twilioToken = azd env get-value TWILIO_AUTH_TOKEN 2>$null
 if ($LASTEXITCODE -ne 0) { $twilioToken = "" }

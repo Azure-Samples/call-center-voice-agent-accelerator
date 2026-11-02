@@ -56,6 +56,14 @@ def register_acs_routes(app, call_manager: CallManager):
         cid = new_correlation_id()
         logger.info("Incoming ACS WebSocket connection")
 
+        # Only ACS knows the per-call token embedded in the transport URL when
+        # the call was answered; reject anything else before Voice Live is touched.
+        token = websocket.args.get("token", "")
+        if not acs_handler.validate_ws_token(token):
+            logger.warning("Invalid or missing ACS media WebSocket token")
+            await websocket.close(4403, "Forbidden")
+            return
+
         call_id = cid
         if not await call_manager.acquire(call_id, "acs"):
             await websocket.close(4429, "Too Many Connections")

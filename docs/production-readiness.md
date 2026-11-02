@@ -49,6 +49,11 @@ The application requires:
 
 The template already stores provider secrets in Azure Key Vault and uses managed identity for Azure-hosted access.
 
+Every accepted media WebSocket opens a Voice Live session billed to the deployment's identity, so each media route authenticates the caller before Voice Live is contacted:
+- **ACS (`/acs/ws`)** — when answering a call, the server embeds a short-lived, signed per-call token in the media transport URL it gives ACS; connections without a valid token are closed with `4403`. Only ACS and the server ever see the token. For defense in depth you can also validate the OIDC JWT that Call Automation sends in the WebSocket `Authorization` header (see [Secure webhook endpoints and WebSocket connections](https://learn.microsoft.com/azure/communication-services/how-tos/call-automation/secure-webhook-endpoint)).
+- **Web client (`/web/ws`)** — requires the shared `WEB_ACCESS_TOKEN` and rejects every connection when it is not configured. `azd up` generates the token. For production, remove the web client or put it behind [Container Apps authentication](https://learn.microsoft.com/azure/container-apps/authentication) so the token is not the only control.
+- **Other providers** — each validates its own provider credential or per-call token on its media WebSocket.
+
 Before production, verify:
 - provider secrets are set in Key Vault, not in source code or local files
 - the Container App identity has only the Azure permissions it needs
