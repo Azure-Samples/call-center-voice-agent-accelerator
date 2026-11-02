@@ -10,6 +10,11 @@ if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($telephonyProvider)) {
     $telephonyProvider = "acs"
 }
 
+# --- Web client access token reminder ---
+Write-Host ""
+Write-Host "The web client requires an access token. Get it with:" -ForegroundColor Cyan
+Write-Host "  azd env get-value WEB_ACCESS_TOKEN" -ForegroundColor Gray
+
 # --- Dispatch to provider-specific script ---
 $providerScript = "$PSScriptRoot/providers/$telephonyProvider.postdeploy.ps1"
 

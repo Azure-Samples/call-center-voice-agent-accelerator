@@ -83,8 +83,8 @@
   <div class="subtitle">Talk to an AI agent in real time. Click below to start.</div>
 
   <div class="controls">
-    <input id="accessToken" type="password" placeholder="Access token (if required)"
-      title="Web access token — must match WEB_ACCESS_TOKEN configured on the server"
+    <input id="accessToken" type="password" placeholder="Access token"
+      title="Web access token — must match WEB_ACCESS_TOKEN configured on the server (run: azd env get-value WEB_ACCESS_TOKEN)"
       style="padding: 0.85rem 1rem; font-size: 1.05rem; border: 1px solid #ccc; border-radius: 0.5rem; min-width: 16rem;" />
   </div>
 
@@ -219,8 +219,13 @@
         }
       }
 
-      socket.onclose = () => {
-        console.log("WebSocket closed");
+      socket.onclose = (event) => {
+        console.log("WebSocket closed", event.code, event.reason);
+        if (event.code === 4403) {
+          alert(event.reason === "Web client disabled"
+            ? "The web client is disabled: WEB_ACCESS_TOKEN is not configured on the server."
+            : "Invalid access token. Get it with: azd env get-value WEB_ACCESS_TOKEN");
+        }
         stopMicrophone();
         stopPlayback();
         document.getElementById("startBtn").disabled = false;
